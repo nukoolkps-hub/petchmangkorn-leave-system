@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches("image/.*");
+    }
+
+    // ⚠️ ชื่อ database ต้องตรงกับ named Firestore database ของโปรเจกต์
+    // (ดู firebase.json → firestore[0].database)
+    function isEmployeeOwner(employeeId) {
+      return isSignedIn()
+        && firestore.get(/databases/petchmangkorn-bot/documents/employees/$(employeeId)).data.lineUserId == request.auth.uid;
+    }
+
+    // รูปโปรไฟล์พนักงาน — เจ้าของหรือ admin อัปโหลดได้
+    match /avatars/{employeeId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if (isAdmin() || isEmployeeOwner(employeeId)) && isImageUpload();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

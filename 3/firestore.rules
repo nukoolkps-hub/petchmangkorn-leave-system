@@ -1,0 +1,160 @@
+// ╔═══════════════════════════════════════════════════════════════════╗
+// ║  Firestore Security Rules — ห้างทองเพชรมังกร ระบบการลา            ║
+// ║  Deploy อัตโนมัติผ่าน .github/workflows/deploy.yml                ║
+// ║                                                                  ║
+// ║  พื้นฐาน: ผู้ใช้ที่ login แล้วเท่านั้นที่อ่าน/เขียนได้             ║
+// ║  admin แยกด้วย custom claim `admin` (ตั้งผ่าน Cloud Function)     ║
+// ╚═══════════════════════════════════════════════════════════════════╝
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isEmployeeOwner(employeeId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/employees/$(employeeId))
+        && get(/databases/$(database)/documents/employees/$(employeeId)).data.lineUserId == request.auth.uid;
+    }
+
+    // วันที่ปัจจุบันตามเขตเวลาไทย (UTC+7) รูปแบบ YYYY-MM-DD
+    // เทียบกับ leave.start (string YYYY-MM-DD) แบบ lexicographic ได้ตรง ๆ
+    function bangkokTime() {
+      return request.time + duration.value(7, 'h');
+    }
+    function pad2(n) {
+      return (n < 10 ? '0' : '') + string(n);
+    }
+    function bangkokToday() {
+      return string(bangkokTime().year())
+        + '-' + pad2(bangkokTime().month())
+        + '-' + pad2(bangkokTime().day());
+    }
+
+    // พนักงานแก้ได้เฉพาะรูปโปรไฟล์ของตัวเอง — ชื่อ/ตำแหน่ง/LINE ID เป็นของ admin
+    function isSelfProfileUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "avatar",
+        "avatarType",
+        "avatarImageUrl",
+        "updatedAt"
+      ]);
+    }
+
+    function validSelfProfileData() {
+      return request.resource.data.avatar is string
+        && request.resource.data.avatar.size() <= 8
+        && request.resource.data.avatarType in ["text", "emoji", "image"]
+        && (!("avatarImageUrl" in request.resource.data)
+          || request.resource.data.avatarImageUrl == null
+          || (request.resource.data.avatarImageUrl is string && request.resource.data.avatarImageUrl.size() <= 2048))
+        && request.resource.data.updatedAt is int;
+    }
+
+    function validLeaveCreate() {
+      return request.resource.data.keys().hasOnly([
+          "employeeId",
+          "employeeName",
+          "employeeNickname",
+          "type",
+          "start",
+          "end",
+          "days",
+          "reason",
+          "submitted",
+          "createdAt",
+          "createdByAdmin"
+        ])
+        && request.resource.data.employeeName ==
+          get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.name
+        && request.resource.data.type in ["personal", "sick"]
+        && request.resource.data.start is string
+        && request.resource.data.end is string
+        // start/end ต้องเป็น YYYY-MM-DD เท่านั้น — กันใส่ string มั่วๆ
+        && request.resource.data.start.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && request.resource.data.end.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && request.resource.data.start <= request.resource.data.end
+        && request.resource.data.days is int
+        && request.resource.data.days > 0
+        && request.resource.data.days <= 366
+        // employeeNickname (optional) = snapshot ของชื่อเล่นพนักงาน · null
+        // ได้ถ้าพนักงานไม่ได้ตั้งชื่อเล่นไว้ตอนยื่นใบลา
+        && (!("employeeNickname" in request.resource.data)
+          || request.resource.data.employeeNickname == null
+          || (request.resource.data.employeeNickname is string
+            && request.resource.data.employeeNickname.size() <= 80))
+        && (!("reason" in request.resource.data)
+          || (request.resource.data.reason is string && request.resource.data.reason.size() <= 500))
+        && (!("submitted" in request.resource.data)
+          || (request.resource.data.submitted is string && request.resource.data.submitted.size() <= 120))
+        && request.resource.data.createdAt is int
+        // createdByAdmin = true ตั้งได้แค่ admin · พนักงานต้องไม่ส่ง field นี้หรือต้องเป็น false
+        && (!("createdByAdmin" in request.resource.data)
+          || (request.resource.data.createdByAdmin is bool
+            && (!request.resource.data.createdByAdmin || isAdmin())));
+    }
+
+    // ─── Employees ───────────────────────────────────────────────
+    // อ่าน: admin หรือเจ้าของ LINE-linked document
+    // เขียน: admin; employee แก้ได้เฉพาะรูปโปรไฟล์ของตัวเอง
+    match /employees/{employeeId} {
+      allow read:   if isAdmin() || (isSignedIn() && resource.data.lineUserId == request.auth.uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isEmployeeOwner(employeeId) && isSelfProfileUpdate() && validSelfProfileData());
+    }
+
+    // ─── Leaves ──────────────────────────────────────────────────
+    // อ่าน: ทุกคน signed-in (ปฏิทินทีม + กันลาทับวันเพื่อนร่วมงาน ·
+    //       ใบลาไม่มีฟิลด์อ่อนไหว)
+    // สร้าง: admin (สร้างให้เพื่อนได้) หรือเจ้าของ employee document
+    // แก้ไข: admin only (ใช้ re-stamp ชื่อ/ชื่อเล่นเมื่อ admin แก้ข้อมูลพนักงาน)
+    // ลบเอง: เฉพาะใบลาที่ยังไม่เริ่ม (start > วันนี้) · วันนี้+อดีต = admin
+    match /leaves/{leaveId} {
+      allow read:   if isSignedIn();
+      allow create: if (isAdmin() || isEmployeeOwner(request.resource.data.employeeId))
+        && validLeaveCreate();
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+        || (isEmployeeOwner(resource.data.employeeId)
+          && resource.data.start > bangkokToday());
+    }
+
+    // ─── Server-side config/secrets ─────────────────────────────
+    // Cloud Functions ใช้ Admin SDK (bypass rules) · client ห้ามอ่าน secrets
+    // ข้อยกเว้น: notifications doc ให้ admin อ่าน/เขียนได้ผ่าน UI
+    // (เปิด-ปิดสรุปเช้า + ตั้งกลุ่ม LINE ปลายทาง — ไม่ใช่ secret)
+    match /config/notifications {
+      allow read, write: if isAdmin();
+    }
+    // ปฏิทินวันเปิด-ปิดร้าน: ทุกคน signed-in อ่านได้ (ใช้นับวันลา) ·
+    // admin เท่านั้นแก้
+    match /config/storeCalendar {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /config/{document} {
+      allow read, write: if false;
+    }
+
+    // ─── LINE Login OAuth state tokens (server-side CSRF defense) ──
+    // Issued by prepareLineLogin · consumed atomically by lineAuth ผ่าน
+    // Admin SDK ทั้งสองทาง → client ห้ามอ่าน/เขียนเลย
+    match /loginStates/{state} {
+      allow read, write: if false;
+    }
+
+    // ─── Daily summary send guard (Cloud Function เท่านั้น) ────────
+    match /dailySummarySent/{ymd} {
+      allow read, write: if false;
+    }
+  }
+}

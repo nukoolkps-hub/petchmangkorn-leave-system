@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#7B1C1C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ลา · เพชรมังกร" />
+    <title>ห้างทองเพชรมังกร — ระบบการลา</title>
+    <!-- Prompt self-host จาก /public/fonts/ — declared ใน src/index.css ·
+         preload woff2 น้ำหนักที่โผล่ตั้งแต่ paint แรก (boot screen):
+         400 = body base · 600 = ข้อความ "กำลังโหลด" · 700 = เปอร์เซ็นต์/bold
+         → พร้อมก่อน first paint กัน FOUT (ตัวอักษรเด้ง) ตอนหน้า loading -->
+    <link rel="preload" href="/fonts/Prompt-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Prompt-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Prompt-700.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
