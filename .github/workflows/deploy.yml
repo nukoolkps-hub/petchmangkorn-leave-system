@@ -1,0 +1,174 @@
+# Auto deploy เมื่อ push เข้า main — Hosting · Functions · Firestore rules · Storage rules
+# ค่า config ทั้งหมดอ่านจาก GitHub Secrets + Variables (ดู README.md → "ขั้นตอนติดตั้ง" ข้อ 3)
+# job `test` (typecheck + vitest) gate ทุก deploy job — เทสต์ fail = ไม่ deploy
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# กัน deploy ซ้อนกันเมื่อ push ติดๆ กัน — ปล่อยให้ตัวที่กำลังรันจบก่อน
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ─── Gate: typecheck + unit tests ────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (frontend)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Typecheck (functions)
+        run: npm run build --prefix functions
+
+  # ─── 1. Hosting ──────────────────────────────────────────────
+  deploy-hosting:
+    name: Deploy Hosting
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_FIRESTORE_DATABASE_ID: ${{ vars.FIRESTORE_DATABASE_ID }}
+          VITE_LINE_LOGIN_CHANNEL_ID: ${{ vars.VITE_LINE_LOGIN_CHANNEL_ID }}
+        run: npm run build
+
+      - name: Authenticate to Firebase
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy
+        run: >-
+          npx --yes firebase-tools@latest deploy
+          --only hosting
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive
+
+  # ─── 2. Cloud Functions ──────────────────────────────────────
+  deploy-functions:
+    name: Deploy Functions
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # firebase.json → functions.predeploy รัน `npm --prefix functions run build`
+      # ตอน deploy → ต้องมี node_modules ของ functions ก่อน
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Authenticate to Firebase
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy
+        run: >-
+          npx --yes firebase-tools@latest deploy
+          --only functions
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive
+          --force
+
+  # ─── 3. Firestore rules + indexes ────────────────────────────
+  deploy-firestore-rules:
+    name: Deploy Firestore Rules
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Authenticate to Firebase
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy
+        run: >-
+          npx --yes firebase-tools@latest deploy
+          --only firestore
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive
+
+  # ─── 4. Storage rules ────────────────────────────────────────
+  deploy-storage-rules:
+    name: Deploy Storage Rules
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Authenticate to Firebase
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy
+        run: >-
+          npx --yes firebase-tools@latest deploy
+          --only storage
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive
