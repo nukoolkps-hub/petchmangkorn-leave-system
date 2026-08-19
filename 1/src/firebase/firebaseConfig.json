@@ -1,0 +1,14 @@
+{
+  "development": {
+    "firebaseConfig": {
+      "apiKey": "mock-api-key",
+      "authDomain": "demo-petchmangkorn-bot.firebaseapp.com",
+      "projectId": "demo-petchmangkorn-bot",
+      "storageBucket": "demo-petchmangkorn-bot.firebasestorage.app",
+      "messagingSenderId": "000000000000",
+      "appId": "1:000000000000:web:0000000000000000000000",
+      "measurementId": "G-0000000000"
+    },
+    "firestoreDatabaseId": "petchmangkorn-bot"
+  }
+}

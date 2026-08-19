@@ -1,0 +1,646 @@
+@import "tailwindcss";
+
+/* ─── Self-host Prompt font ─────────────────────────────────
+   เคย load จาก Google Fonts CDN — แต่ LINE WebView / iOS Safari
+   บางครั้ง load ช้า/ติดบล็อก ทำให้ fallback เป็น system font
+   ทำให้ Thai text ดูเหมือน mono · self-host ให้ load ทันที 100%
+   · WOFF2 ก่อน (เล็กกว่า ttf ~70% → 150KB→46KB · โหลดเร็ว ลด FOUT
+     "ตัวอักษรเพี้ยน/เด้ง" ตอน boot) · ttf fallback สำหรับ browser เก่า */
+@font-face {
+  font-family: "Prompt";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    url("/fonts/Prompt-400.woff2") format("woff2"),
+    url("/fonts/Prompt-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Prompt";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src:
+    url("/fonts/Prompt-500.woff2") format("woff2"),
+    url("/fonts/Prompt-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Prompt";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src:
+    url("/fonts/Prompt-600.woff2") format("woff2"),
+    url("/fonts/Prompt-600.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Prompt";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    url("/fonts/Prompt-700.woff2") format("woff2"),
+    url("/fonts/Prompt-700.ttf") format("truetype");
+}
+@theme {
+  /* ─── Brand Colors (from constants.ts COLORS object) ──────────── */
+  --color-maroon: #7b1c1c;
+  --color-maroon-dk: #5c1212;
+  --color-maroon-lt: #9b3030;
+  --color-gold: #c9973a;
+  --color-gold-lt: #e8c87a;
+  --color-gold-pale: #f5e6c8;
+  /* silver — สำหรับการ์ดเงิน + accent ที่ไม่ใช่ทอง · ใช้ tone graphite-gray
+     (เทียบ #4c4c50 ที่ mukdagold ใช้ในการ์ดราคาเงิน) */
+  --color-silver: #5a5a60;
+  --color-silver-dk: #3a3a40;
+  --color-silver-lt: #b8b8c0;
+  /* nak (rose gold) — สำหรับการ์ดนาก (ทองผสมทองแดง) · pinkish-coppery tone
+     ที่สื่อสีจริงของนาก · contrast ผ่าน WCAG AA บน white + cream */
+  --color-rose-gold: #b76e79;
+  --color-rose-gold-dk: #8e535d;
+  --color-rose-gold-lt: #e5c7cb;
+  --color-cream: #fdf8f0;
+  --color-cream-dk: #f0e4cc;
+  --color-txt: #2d1a0e;
+  --color-txt-mid: #7a5c3a;
+  --color-txt-soft: #b89a72;
+  --color-bdr: #e8d5b0;
+  --color-red: #c0392b;
+  --color-red-lt: #fdecea;
+  --color-green: #1a6b3a;
+  --color-green-lt: #e8f5ee;
+  --color-amber: #d97706;
+  --color-amber-lt: #fef3c7;
+
+  /* ─── Typography ─────────────────────────────────────────── */
+  --font-sans: "Prompt", "Noto Sans Thai", sans-serif;
+
+  /* ─── Font weights — ลด bold ลง 100 หน่วยเพื่ออ่านง่ายขึ้น ───── */
+  --font-weight-semibold: 500;
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 700;
+}
+
+/* Google Fonts loaded via @import at top of file */
+
+/* ─── Base Styles ──────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 0;
+  background: #fdf8f0;
+  /* Prompt font default ทุก element — กัน fallback เป็น system font เมื่อ
+     element อยู่นอก .leave-app-root (เช่น modal portal, BootLoadingScreen
+     หรือ React Fragment ที่ไม่มี wrapper ของตัวเอง)
+     !important — กัน Tailwind preflight / browser reset เขียนทับ */
+  font-family: var(--font-sans) !important;
+}
+
+/* iOS Safari: ปิด native styling ของ date/month input — ป้องกัน
+   intrinsic min-width ที่ทำให้ขอบล้น parent container */
+input[type="date"],
+input[type="month"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="month"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 151, 58, 0.31);
+  border-radius: 2px;
+}
+select:focus {
+  outline: none;
+}
+
+/* ─── ซ่อนปุ่มลูกศรขึ้น-ลงของช่อง number ทั้งระบบ ──────────────── */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ─── Truncate กับภาษาไทย — กันวรรณยุกต์/สระบนโดนตัด (ทั้งระบบ) ─────────
+   Tailwind .truncate = overflow:hidden · ถ้ากล่อง line แคบ (เช่น text-xs /
+   leading-tight) วรรณยุกต์ไทยที่โผล่เหนือกล่อง (เช่น "น้ำ", "ที่") จะโดนตัดบน
+   → บังคับ line-height ให้สูงพอครอบวรรณยุกต์ครบ · truncate เป็น single-line
+   เสมอ (white-space:nowrap) จึงไม่กระทบ layout นอกจากสูงขึ้นเล็กน้อย ·
+   ยัง truncate แนวนอน (ellipsis) ปกติ · แก้ที่เดียวครอบทุก truncate ในระบบ */
+.truncate {
+  line-height: 1.55;
+}
+
+/* ─── Interaction smoothness (ทั้งระบบ) ─────────────────────────────
+   ปรับความลื่นไหลรวม: ตัด tap flash, แตะติดมือทันที (ลด delay), ฟอนต์คมขึ้น,
+   เลื่อนแบบ smooth + กัน scroll ทะลุ (chaining) · ทุกอย่างเคารพ
+   prefers-reduced-motion ผ่าน media query reset ด้านล่าง                  */
+html {
+  scroll-behavior: smooth;
+  /* ตัดไฮไลต์สีเทา/ฟ้าตอนแตะปุ่มบนมือถือ — ใช้ active:scale/bg เป็น feedback แทน */
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  /* ฟอนต์ Prompt คมขึ้นบนจอ retina/มือถือ */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* กันหน้าเด้งทะลุ (rubber-band/pull-to-refresh) ใน LINE WebView / iOS */
+  overscroll-behavior-y: contain;
+}
+
+/* ปุ่ม/ลิงก์/ตัวควบคุม — แตะติดมือทันที (ตัด ~300ms delay + double-tap zoom)
+   + transition พื้นฐานให้การเปลี่ยนสถานะ (สี/เงา/ย่อขยายตอนกด) นุ่มขึ้น ·
+   component ที่ตั้ง transition-*/ touch-none เองมี specificity สูงกว่า → override *
+/
+button,
+a,
+[role="button"],
+[role="option"],
+summary {
+  touch-action: manipulation;
+  transition-property:
+    color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* overlay ที่ scroll ได้ (modal · dropdown) — กัน scroll ทะลุไปหน้าเบื้องหลัง
+   + momentum scroll นุ่มบน iOS */
+[role="dialog"],
+[role="listbox"] {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* มือถือ: ตอนแตะช่องกรอก เบราว์เซอร์จะ scroll ช่องเข้ามาในจอ — เผื่อระยะขอบ
+   บน/ล่าง ไม่ให้ช่องถูก scroll ไปชิดคีย์บอร์ด/แถบเมนูล่าง (กันหน้าจอกระตุก
+   ซ้ำ + caret ถูกบังจนดูเหมือนไม่ตรง) */
+input,
+textarea,
+select {
+  scroll-margin-top: 80px;
+  scroll-margin-bottom: 100px;
+}
+
+/* ─── Keyframe Animations ──────────────────────────────────── */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ringFill {
+  from {
+    stroke-dashoffset: 131.95;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ringFillSide {
+  from {
+    stroke-dashoffset: 119.38;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes modalIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-8px);
+  }
+  40% {
+    transform: translateX(8px);
+  }
+  60% {
+    transform: translateX(-6px);
+  }
+  80% {
+    transform: translateX(6px);
+  }
+}
+@keyframes calFade {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* valuePop — ยอดเงินเด้งนุ่มๆ ครั้งเดียวตอนค่าเปลี่ยน (one-shot · ไม่ loop)
+   ใช้กับเลขเงินสุทธิที่อัปเดต live · key={ค่า} → เล่นซ้ำเมื่อค่าเปลี่ยน */
+@keyframes valuePop {
+  from {
+    transform: scale(1.06);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+/* shimmer — แถบแสงวิ่งบน skeleton placeholder ตอนข้อมูลกำลังโหลด ·
+   ใช้ transform translateX (GPU-composited) แทน background-position (paint
+   ทุกเฟรม) → ลื่น ไม่กระตุกแม้มีหลาย skeleton พร้อมกัน */
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+/* ─── Shared exit/fade animations ────────────────────────────
+   ใช้ผ่าน animate-[fadeIn_0.18s_ease-out] / animate-[modalOut_0.14s_ease-in]
+   / animate-[toastOut_0.2s_ease-in]                                       */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modalOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialogOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+/* dialogIn — dialog เด้งเข้านุ่มๆ (opacity + scale · GPU) · ใช้คู่กับ overlay
+   ที่โผล่ทันที (ไม่ animate blur) → เปิด modal ลื่นสุด ไม่กระตุก backdrop-blur */
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ─── Respect prefers-reduced-motion (a11y) ────────────────────
+   ผู้ใช้ที่ตั้ง OS ลด motion → ตัด animation/transition ทั้งหมด           */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── Layout Shell ─────────────────────────────────────────── */
+.leave-app-root {
+  min-height: 100vh;
+  background: var(--color-cream);
+  font-family: var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  max-width: 430px;
+  margin: 0 auto;
+  box-shadow: 0 0 60px rgba(90, 30, 10, 0.12);
+}
+
+/* ─── Desktop Layout (≥768px) ──────────────────────────────── */
+@media (min-width: 768px) {
+  body {
+    background: var(--color-cream-dk);
+  }
+
+  .leave-app-root {
+    max-width: 100%;
+    flex-direction: row;
+    min-height: 100vh;
+    box-shadow: none;
+  }
+
+  .leave-sidebar {
+    width: 260px;
+    min-width: 260px;
+    flex-shrink: 0;
+    background: linear-gradient(
+      180deg,
+      var(--color-maroon-dk) 0%,
+      var(--color-maroon) 60%,
+      var(--color-maroon-lt) 100%
+    );
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .leave-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .leave-header-mobile {
+    display: none;
+  }
+  .leave-bottom-nav {
+    display: none;
+  }
+  .leave-content {
+    padding: 24px 32px 40px;
+    max-width: 960px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .leave-sidebar-profile {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+  }
+
+  .leave-sidebar-nav {
+    flex: 1;
+    min-height: 0;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(201, 151, 58, 0.3) transparent;
+    /* กัน layout shift ของ header — ถ้า content เปลี่ยน scrollbar
+       ปรากฏ/หาย แล้ว width ของ content จะขยับ → header ตามไปด้วย */
+    scrollbar-gutter: stable;
+  }
+
+  .leave-sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+  }
+  .leave-sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .leave-sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(201, 151, 58, 0.3);
+    border-radius: 3px;
+  }
+  .leave-sidebar-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(201, 151, 58, 0.5);
+  }
+
+  .leave-sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.6);
+    width: 100%;
+    text-align: left;
+    transition: all 0.2s;
+  }
+
+  .leave-sidebar-nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .leave-sidebar-nav-item.active {
+    background: linear-gradient(
+      135deg,
+      rgba(201, 151, 58, 0.19),
+      rgba(201, 151, 58, 0.09)
+    );
+    color: var(--color-gold-lt);
+    font-weight: 700;
+    border: 1px solid rgba(201, 151, 58, 0.25);
+  }
+
+  .leave-sidebar-footer {
+    padding: 16px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .leave-desktop-header {
+    background: linear-gradient(
+      160deg,
+      var(--color-maroon-dk) 0%,
+      var(--color-maroon) 55%,
+      var(--color-maroon-lt) 100%
+    );
+    padding: 20px 32px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+}
+
+/* ─── Mobile Layout (<768px) ───────────────────────────────── */
+@media (max-width: 767px) {
+  .leave-sidebar {
+    display: none;
+  }
+  .leave-desktop-header {
+    display: none;
+  }
+
+  .leave-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 430px;
+    z-index: 100;
+  }
+
+  .leave-content {
+    padding-bottom: 90px;
+  }
+}
+
+/* ─── Utility Classes (replacing inline styles) ────────────────── */
+
+/* Box shadows with brand colors */
+.shadow-gold-glow {
+  box-shadow: 0 4px 14px rgba(201, 151, 58, 0.31);
+}
+.shadow-maroon-glow {
+  box-shadow: 0 4px 14px rgba(123, 28, 28, 0.25);
+}
+.shadow-red-glow {
+  box-shadow: 0 3px 10px rgba(192, 57, 43, 0.31);
+}
+
+/* Accent colors for checkboxes / radio buttons */
+.accent-red {
+  accent-color: var(--color-red);
+}
+.accent-green {
+  accent-color: var(--color-green);
+}
+
+/* Common gold border with 30% alpha */
+.border-gold-30 {
+  border: 1px solid rgba(201, 151, 58, 0.19);
+}
+
+/* Gold divider line */
+.bg-gold-divider {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(201, 151, 58, 0.5),
+    transparent
+  );
+}
+
+/* Gold hint background */
+.bg-gold-hint {
+  background: rgba(201, 151, 58, 0.08);
+}
+
+/* Dashed border top with gold */
+.border-t-gold-dashed {
+  border-top: 1px dashed rgba(201, 151, 58, 0.31);
+}
+
+/* ─── Rich text (WYSIWYG) ────────────────────────────────────────
+   class .rich-text ใส่บนทั้ง 2 surface (editor ฝั่ง admin + content
+   ฝั่งพนักงาน) → กฎเขียนที่เดียว สองฝั่ง render เหมือนกันแน่นอน
+   - list styles (ul/ol) ที่ Tailwind v4 ปิด default ไว้
+   - blockquote = ย่อหน้า (execCommand indent) — !important ทับ inline
+     style ของเบราว์เซอร์ใน editor ให้เท่าฝั่ง render ที่ style ถูก strip
+   .rich-text-editor เพิ่มเฉพาะ placeholder (เป็นของ editor เท่านั้น)  */
+.rich-text {
+  line-height: 1.55;
+}
+.rich-text ul,
+.rich-text ol {
+  /* default ของ list ใน editor: ไม่โชว์จุด — กัน contentEditable สร้าง
+     ul/ol เองตอน indent แล้วโผล่จุดที่ admin ไม่ได้ตั้งใจ */
+  list-style: none !important;
+  list-style-type: none !important;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.rich-text li {
+  margin: 0.15em 0;
+}
+.rich-text li::marker {
+  content: "";
+  font-size: 0;
+}
+/* bullet ที่ admin ตั้งใจกดปุ่ม "รายการ" — โชว์จุดตามปกติ */
+.rich-text ul.rt-bullet {
+  list-style: disc !important;
+  list-style-type: disc !important;
+  padding-left: 1.5em;
+}
+.rich-text ol.rt-bullet {
+  list-style: decimal !important;
+  list-style-type: decimal !important;
+  padding-left: 1.5em;
+}
+.rich-text ul.rt-bullet > li::marker,
+.rich-text ol.rt-bullet > li::marker {
+  content: normal;
+  font-size: inherit;
+}
+.rich-text blockquote {
+  margin: 0 0 0 1.25em !important;
+  padding: 0 !important;
+  border: none !important;
+}
+.rich-text-editor:empty:before {
+  content: attr(data-placeholder);
+  color: rgba(45, 26, 14, 0.4);
+  pointer-events: none;
+}
