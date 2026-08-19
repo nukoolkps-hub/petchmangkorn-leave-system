@@ -1,0 +1,26 @@
+{
+  "name": "ห้างทองเพชรมังกร — ระบบการลา",
+  "short_name": "ลา · เพชรมังกร",
+  "description": "ระบบยื่นใบลาพนักงาน ห้างทองเพชรมังกร",
+  "lang": "th",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FDF8F0",
+  "theme_color": "#7B1C1C",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ]
+}

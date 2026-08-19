@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ห้างเพชรทองมุกดา ระบบพนักงาน">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E2A2A"/>
+      <stop offset="1" stop-color="#6E1818"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E3B45E"/>
+      <stop offset="1" stop-color="#C9973A"/>
+    </linearGradient>
+  </defs>
+  <!-- app-icon background -->
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- employee (person) — head + shoulders -->
+  <circle cx="32" cy="25" r="8.5" fill="url(#gold)"/>
+  <path d="M16 51c0-8.8 7.2-15 16-15s16 6.2 16 15v1H16z" fill="url(#gold)"/>
+  <!-- diamond accent (brand: เพชรทอง) -->
+  <g transform="translate(40.5 9) scale(0.62)">
+    <path d="M6 3h12l4 6-10 12L2 9z" fill="#FBE6B8"/>
+    <path d="M2 9h20M6 3l4 6m8-6l-4 6" fill="none" stroke="#6E1818" stroke-width="1.1" opacity=".45"/>
+  </g>
+</svg>
