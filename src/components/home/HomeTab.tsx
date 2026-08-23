@@ -252,9 +252,3 @@ export default function HomeTab({
     </>
   );
 }
-
-/* ─── หน้าที่วันนี้ — สำหรับ HomeTab พนักงาน ────────────────────────
-   ใช้ server-computed snapshot · ฝั่งพนักงานอ่าน peer data (employees/
-   leaves) ของคนอื่นไม่ได้เพราะ Firestore rules → Cloud Function compute
-   ส่วนกลาง ส่ง safe projection (id/name/nickname/avatar/displayOrder
-   เท่านั้น ไม่มี salary/bank/lineUserId)                                  */
