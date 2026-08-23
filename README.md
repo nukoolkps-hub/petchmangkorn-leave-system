@@ -54,18 +54,27 @@
 ### 1. สร้าง Firebase project
 
 1. สร้างโปรเจกต์ใหม่ที่ https://console.firebase.google.com
-2. เปิดใช้ **Firestore** — สร้าง database แบบ **Named database** ชื่อ `petchmangkorn-bot`
+2. อัปเกรดเป็น **Blaze (pay as you go)** — Cloud Functions v2 + Cloud Scheduler
+   ใช้บน Spark ไม่ได้ (โหลดระดับร้านเดียวอยู่ใน free tier)
+3. เปิดใช้ **Firestore** — สร้าง database แบบ **Named database** ชื่อ `petchmangkorn-bot`
    (ถ้าใช้ชื่ออื่น ต้องแก้ 4 ที่: `firebase.json` · `src/firebase/config.ts` ·
    `functions/src/helpers/config.ts` · `storage.rules`)
    - Location แนะนำ `asia-southeast1`
-3. เปิดใช้ **Storage** (สำหรับรูปโปรไฟล์) และ **Authentication**
-4. Authentication → Sign-in method → เปิด **Anonymous** ไว้ (ระบบใช้ custom token)
-5. Project settings → Your apps → Add app → **Web** → จดค่า config ไว้ใช้ขั้นตอนที่ 3
+4. เปิดใช้ **Storage** (สำหรับรูปโปรไฟล์) และ **Authentication**
+5. Authentication → Sign-in method → เปิด **Anonymous** ไว้ (ระบบใช้ custom token)
+6. Project settings → Your apps → Add app → **Web** → จดค่า config ไว้ใช้ขั้นตอนที่ 3
 
 ### 2. ตั้งค่า LINE
 
 1. สร้าง **LINE Login channel** + **Messaging API channel** ที่ https://developers.line.biz
-2. LINE Login → Callback URL: `https://<project-id>.web.app/`
+   - ⚠️ **ต้องอยู่ใต้ provider เดียวกัน** — LINE User ID ผูกกับ provider
+     ถ้าคนละ provider คนเดียวกันจะได้ ID คนละค่า → `ADMIN_LINE_USER_ID`
+     ที่ได้จากบอทจะไม่ตรงกับ ID ที่ได้ตอน LINE Login → login ไม่ผ่าน
+2. LINE Login → Callback URL: `https://<project-id>.web.app/callback`
+   - ⚠️ ต้องมี `/callback` ต่อท้าย — ตรงกับ `redirectUri` ใน
+     `src/components/auth/LoginScreen.tsx` · LINE เทียบแบบตรงตัวอักษร
+     ไม่ตรง = `400 Invalid redirect_uri value`
+   - เพิ่ม `http://localhost:5173/callback` ไว้ด้วยถ้าจะ dev ในเครื่อง
 3. Messaging API → Webhook URL: `https://<project-id>.web.app/webhook` → เปิด "Use webhook"
 4. ใส่ค่าลง Firestore doc **`config/secrets`** (สร้างเอง collection `config` document `secrets`):
 
@@ -101,29 +110,90 @@ Settings → Secrets and variables → Actions
 | `VITE_FIREBASE_MEASUREMENT_ID` | จาก web app config (ถ้ามี) |
 | `VITE_LINE_LOGIN_CHANNEL_ID` | LINE Login Channel ID |
 
-### 4. Deploy
+### 4. สิทธิ์ IAM + API ที่ต้องเปิด
+
+Firebase CLI พยายามเปิด API ที่ขาดให้เอง แต่ service account ที่ deploy
+ไม่มีสิทธิ์เปิด → deploy จะ fail พร้อมข้อความ `Permissions denied enabling ...`
+เปิดเองล่วงหน้าให้ครบจะเร็วกว่าไล่แก้ทีละรอบ
+
+**เปิด API ทั้งหมดนี้** (Google Cloud Console → APIs & Services → Library):
+
+| API | ใช้ตอน |
+|---|---|
+| `cloudfunctions.googleapis.com` | deploy functions |
+| `cloudbuild.googleapis.com` | build container ของ functions |
+| `artifactregistry.googleapis.com` | เก็บ container image |
+| `run.googleapis.com` | Functions v2 รันบน Cloud Run |
+| `eventarc.googleapis.com` | Functions v2 |
+| `cloudscheduler.googleapis.com` | สรุปเช้า 07:30 |
+| `firebasestorage.googleapis.com` | deploy storage rules |
+| `iamcredentials.googleapis.com` | เซ็น custom token ตอน LINE Login |
+
+**Role ของ service account ที่ deploy** (ตัวที่ใส่ใน `FIREBASE_SERVICE_ACCOUNT`)
+— Google Cloud Console → IAM:
+
+| Role | ขาดแล้วเกิดอะไร |
+|---|---|
+| `Firebase Admin` | deploy hosting / rules ไม่ได้ |
+| `Cloud Functions Admin` | deploy functions ไม่ได้ |
+| `Service Account User` | deploy functions ไม่ได้ |
+| `Cloud Scheduler Admin` | `sendDailySummary` deploy ไม่ผ่าน (`cloudscheduler.jobs.update` denied) |
+| `Service Usage Admin` | ไม่จำเป็นถ้าเปิด API เองครบแล้ว · มีไว้ให้ CLI เปิด API ที่ขาดได้เอง |
+
+**⚠️ สิทธิ์เซ็น custom token** — Functions v2 รันด้วย compute default service
+account (`<PROJECT_NUMBER>-compute@developer.gserviceaccount.com`) ซึ่ง
+**ไม่มีสิทธิ์เซ็น JWT มาแต่แรก** → `createCustomToken()` ใน `lineAuth` โยน
+error → LINE Login ได้ `500 INTERNAL`
+
+แก้: IAM & Admin → Service Accounts → เลือก SA ตัวนั้น → แท็บ **PERMISSIONS**
+→ **GRANT ACCESS** → principal = **email ของตัวมันเอง** → role
+**`Service Account Token Creator`**
+
+(ให้บนตัว SA เอง ไม่ใช่ระดับ project — แคบกว่า ปลอดภัยกว่า)
+
+### 5. Deploy
 
 push เข้า `main` → GitHub Actions deploy ให้อัตโนมัติทั้ง 4 อย่าง
 (Hosting · Functions · Firestore rules · Storage rules)
 
-### 5. ตั้ง ADMIN คนแรก
+### 6. ตั้ง ADMIN คนแรก
 
 1. เข้าเว็บ → Login ด้วย LINE ของเจ้าของร้าน
 2. `ADMIN_LINE_USER_ID` ที่ตั้งไว้จะได้ admin claim อัตโนมัติ
 3. ออกจากระบบแล้วเข้าใหม่ 1 ครั้ง (ให้ token ใหม่มี claim)
 
-### 6. เปิดสรุปเช้า
+### 7. เปิดสรุปเช้า
 
 1. เชิญบอทเข้ากลุ่ม LINE ของร้าน
 2. พิมพ์ `ไอดีกลุ่ม` ในกลุ่มนั้น → บอทตอบ Group ID
 3. เอา ID ไปใส่ที่ **/admin → LINE BOT → การแจ้งเตือน → กลุ่มที่รับสรุปเช้า**
 4. ทดสอบ: พิมพ์ `ทดสอบแจ้งเตือน` ในแชทส่วนตัวกับบอท
 
-### 7. เพิ่มพนักงาน
+### 8. เพิ่มพนักงาน
 
 - **/admin → ตั้งค่า → พนักงาน** เพิ่มรายชื่อ
 - ผูก LINE: ให้พนักงานเข้ากลุ่ม แล้ว admin พิมพ์ `@บอท เชื่อมพนักงาน @ชื่อพนักงาน`
   (หรือให้พนักงานส่ง `ไอดีฉัน` มาให้ แล้ว admin กรอกเอง)
+
+---
+
+## แก้ปัญหาที่เจอบ่อยตอนติดตั้ง
+
+| อาการ | สาเหตุ | แก้ |
+|---|---|---|
+| Deploy fail: `Permissions denied enabling <api>` | service account เปิด API เองไม่ได้ | เปิด API ตามตารางในขั้นตอนที่ 4 |
+| `sendDailySummary` deploy ไม่ผ่าน — `cloudscheduler.jobs.update` denied | ขาด role | ให้ `Cloud Scheduler Admin` |
+| LINE กด Verify webhook → `401 Unauthorized` | `LINE_CHANNEL_SECRET` ผิดค่า (มักหยิบของ LINE Login มาใส่) | ใช้ Channel secret ของ **Messaging API** |
+| LINE กด Verify webhook → `503 webhook not configured` | ไม่มี `LINE_CHANNEL_SECRET` ใน `config/secrets` หรืออยู่ผิด database | เช็คว่า doc อยู่ใน database `petchmangkorn-bot` ไม่ใช่ `(default)` |
+| กดปุ่ม Login → `400 Invalid redirect_uri value` | Callback URL ไม่ตรง | ใส่ `https://<project-id>.web.app/callback` (มี `/callback`) |
+| กดปุ่ม Login → `400 invalid client_id` | `VITE_LINE_LOGIN_CHANNEL_ID` ผิด | ใช้ Channel ID ของ **LINE Login** channel |
+| Login → `500 INTERNAL` ที่ `lineAuth` | compute SA เซ็น custom token ไม่ได้ | ให้ `Service Account Token Creator` (ดูขั้นตอนที่ 4) |
+| Login สำเร็จ แต่ขึ้น "บัญชี LINE นี้ยังไม่ได้ถูกเพิ่มโดยผู้ดูแลระบบ" | ID ไม่ตรง `ADMIN_LINE_USER_ID` และยังไม่มี record พนักงาน | ก๊อป ID จากที่บอทตอบ `ไอดีฉัน` มาวางใหม่ · เช็คว่า 2 channel อยู่ provider เดียวกัน |
+| เข้าได้แต่ไม่เห็นเมนู `/admin` | token เก่ายังไม่มี claim | logout แล้ว login ใหม่ 1 ครั้ง |
+| ปุ่ม Login ขึ้น "ยังไม่ได้ตั้งค่า VITE_LINE_LOGIN_CHANNEL_ID" | ตั้ง GitHub Variable แล้วแต่ยังไม่ได้ build ใหม่ | Actions → Deploy → Run workflow |
+
+> `ADMIN_LINE_USER_ID` ใส่หลายคนได้ — คั่นด้วย comma หรือเว้นวรรค ·
+> ทุกครั้งที่ admin login ระบบจะเพิกถอน admin claim ของคนที่ไม่อยู่ในลิสต์นี้
 
 ---
 
