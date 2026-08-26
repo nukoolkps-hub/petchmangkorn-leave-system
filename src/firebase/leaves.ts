@@ -4,7 +4,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -36,10 +35,6 @@ export function subscribeLeaves(
 }
 
 /* ─── Get all (one-time) ───────────────────────────────────── */
-export async function getAllLeaves(): Promise<LeaveEntry[]> {
-  const snap = await getDocs(query(ref, orderBy("start", "desc")));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LeaveEntry);
-}
 
 /* ─── Add new leave ────────────────────────────────────────── */
 export async function addLeave(leave: Omit<LeaveEntry, "id">): Promise<string> {

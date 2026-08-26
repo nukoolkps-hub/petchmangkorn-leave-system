@@ -6,17 +6,11 @@
 
 import {
   signOut as fbSignOut,
-  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithCustomToken,
-  signInWithEmailAndPassword,
-  signInWithPopup,
 } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "./config";
-
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: "select_account" });
 
 const lineAuthFn = httpsCallable(functions, "lineAuth");
 const prepareLineLoginFn = httpsCallable(functions, "prepareLineLogin");
@@ -33,22 +27,6 @@ export type SeedLineConfigResult = {
   skipped?: boolean;
   seededKeys: string[];
 };
-
-/* ─── Google Sign-in ────────────────────────────────────────── */
-export async function signInWithGoogle() {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user; // { uid, email, displayName, photoURL }
-  } catch (err: unknown) {
-    const e = err as { code?: string };
-    console.error("[Auth] Google sign-in failed:", err);
-    throw new Error(
-      e.code === "auth/popup-closed-by-user"
-        ? "ยกเลิกการลงชื่อเข้าใช้"
-        : "ลงชื่อเข้าใช้ไม่สำเร็จ",
-    );
-  }
-}
 
 /* ─── LINE Login (full flow) ─────────────────────────────────
    ขั้นที่ 1: ขอ state จาก server → redirect → LINE Login URL
@@ -144,22 +122,6 @@ export async function signInWithDevRole(role: DevRole) {
 export async function seedLineConfigFromEnv() {
   const result = await seedLineConfigFromEnvFn();
   return result.data as SeedLineConfigResult;
-}
-
-/* ─── Email/Password (Admin) ────────────────────────────────── */
-export async function signInWithEmail(email, password) {
-  try {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    return result.user;
-  } catch (err: unknown) {
-    const e = err as { code?: string };
-    console.error("[Auth] Email sign-in failed:", err);
-    throw new Error(
-      e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
-        ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-        : "ลงชื่อเข้าใช้ไม่สำเร็จ",
-    );
-  }
 }
 
 /* ─── Sign Out ──────────────────────────────────────────────── */

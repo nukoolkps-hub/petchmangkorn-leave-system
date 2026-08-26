@@ -41,7 +41,6 @@ const firebaseRuntimeConfig: FirebaseRuntimeConfig = import.meta.env.PROD
 
 export const firebaseConfig = firebaseRuntimeConfig.firebaseConfig;
 export const FIRESTORE_DATABASE_ID = firebaseRuntimeConfig.firestoreDatabaseId;
-export const FIREBASE_PROJECT_ID = firebaseConfig.projectId || "";
 
 // Validate config — warn user ถ้าลืมตั้งค่าใน JSON
 const requiredFirebaseKeys = [

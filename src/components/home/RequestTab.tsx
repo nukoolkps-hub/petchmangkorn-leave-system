@@ -15,11 +15,16 @@ import { useMemo, useState } from "react";
 import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
 import type { LeaveEntry, StoreCalendar } from "../../types";
 import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
-import { countWeekdayLeaves, leaveOverlapsMonth } from "../../utils/leaveUtils";
+import {
+  countWeekdayLeaves,
+  getAdditionalDeduction,
+  leaveOverlapsMonth,
+} from "../../utils/leaveUtils";
 import { isStoreClosed, isSunday } from "../../utils/storeCalendar";
 import ConfirmModal from "../modals/ConfirmModal";
 import SubmitLeaveConfirmModal from "../modals/SubmitLeaveConfirmModal";
 import CalendarPicker from "../shared/CalendarPicker";
+import DeductionSummary from "../shared/DeductionSummary";
 import GoldDivider from "../shared/GoldDivider";
 import MonthChevronNav from "../shared/MonthChevronNav";
 import LeaveTypeCard from "./LeaveTypeCard";
@@ -27,7 +32,7 @@ import LeaveTypeCard from "./LeaveTypeCard";
 /** ลาป่วยล่วงหน้าได้สูงสุด 2 อาทิตย์ */
 const SICK_LEAVE_MAX_AHEAD_DAYS = 14;
 
-/** ใบลานี้คร่อมวันอาทิตย์ที่ "ร้านเปิด" ไหม — อาทิตย์เปิดจะถูกหัก × 1.5
+/** ใบลานี้คร่อมวันอาทิตย์ที่ "ร้านเปิด" ไหม — อาทิตย์เปิดถูกหักทันที
  *  (อาทิตย์ปิดพิเศษใน extraClosedSundays ไม่นับ เพราะร้านปิด ลาไม่กระทบ) */
 function hasDeductibleSunday(
   start: string,
@@ -190,6 +195,15 @@ export default function RequestTab({
   const rem = quota - usedThisMonth;
   const overQuota = usedThisMonth >= quota;
 
+  /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
+     คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — โควต้าเป็นของทั้งเดือน
+     ถ้าเดือนนี้ใช้โควต้าหมดแล้ว วันธรรมดาวันแรกของใบใหม่ก็โดนหักเลย */
+  const pendingDeduction = getAdditionalDeduction(
+    myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
+    { start: form.startDate, end: form.endDate },
+    storeCalendar,
+  );
+
   return (
     <div>
       {/* quota status in form */}
@@ -208,14 +222,15 @@ export default function RequestTab({
             className={`font-bold text-sm ${overQuota ? "text-red" : "text-maroon"}`}
           >
             {overQuota
-              ? "หมดโควต้าแล้ว - การลาครั้งถัดไปจะกระทบต่อเงินเดือน"
+              ? `หมดโควต้าแล้ว — วันธรรมดาหักวันละ ${BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท`
               : `โควต้าเดือนนี้เหลือ ${rem} วัน`}
           </div>
           <div className="text-sm text-txt-soft mt-0.5">
-            ลากิจ + ลาป่วย รวม 2 วัน/เดือน
+            ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
           </div>
           <div className="text-xs text-txt-soft mt-0.5">
-            นับเฉพาะวันธรรมดา · วันอาทิตย์หักแยก (ไม่กินโควต้า)
+            นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
+            บาททันที (ไม่กินโควต้า)
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -224,7 +239,7 @@ export default function RequestTab({
           >
             {usedThisMonth}
           </div>
-          <div className="text-xs text-txt-soft">/ 2 วัน</div>
+          <div className="text-xs text-txt-soft">/ {quota} วัน</div>
         </div>
       </div>
 
@@ -329,6 +344,9 @@ export default function RequestTab({
           </div>
         </div>
       )}
+      {days > 0 && (
+        <DeductionSummary deduction={pendingDeduction} title="ใบลานี้จะถูกหัก" />
+      )}
       {errors.over && (
         <div className="text-red text-sm mx-0 mt-1 mb-2.5 inline-flex items-center gap-1">
           <IconAlertTriangle size={14} strokeWidth={2.4} />
@@ -358,6 +376,7 @@ export default function RequestTab({
           startDate={form.startDate}
           endDate={form.endDate}
           days={days}
+          deduction={pendingDeduction}
           saving={submittingLeave}
           onConfirm={handleConfirmSubmit}
           onCancel={() => setShowSubmitConfirm(false)}
@@ -424,7 +443,7 @@ export default function RequestTab({
                         {hasDeductibleSunday(h.start, h.end, storeCalendar) && (
                           <span className="text-xs font-extrabold tracking-wide px-1.5 py-1 rounded-[10px] bg-amber-lt text-amber border border-amber/40 inline-flex items-center gap-0.5">
                             <IconSun size={10} strokeWidth={2.6} />
-                            อาทิตย์ ×1.5
+                            อาทิตย์ −{BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}
                           </span>
                         )}
                       </div>

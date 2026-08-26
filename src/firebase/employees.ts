@@ -3,7 +3,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -61,10 +60,6 @@ export function subscribeEmployeeByLineUserId(lineUserId, onChange, onError) {
 }
 
 /* ─── Read All (one-time) ───────────────────────────────────── */
-export async function getAllEmployees() {
-  const snap = await getDocs(query(ref, orderBy("name")));
-  return sortByDisplayOrder(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-}
 
 /* ─── Batch update displayOrder — ใช้ตอน admin ลาก reorder card ─── */
 export async function reorderEmployees(orderedIds) {
@@ -79,10 +74,6 @@ export async function reorderEmployees(orderedIds) {
 }
 
 /* ─── Read by ID ─────────────────────────────────────────────── */
-export async function getEmployee(id) {
-  const snap = await getDoc(doc(ref, id));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-}
 
 /* ─── Find by LINE User ID (for LINE Login) ───────────────────── */
 export async function getEmployeeByLineId(lineUserId) {

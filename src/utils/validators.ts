@@ -15,29 +15,6 @@ export function validateLineUserId(value) {
 }
 
 /**
- * Validate non-negative number
- * @returns {string|null} error message หรือ null
- */
-export function validateNonNegativeNumber(value, fieldName = "ค่า") {
-  if (value === "" || value === null || value === undefined) return null;
-  const num = parseFloat(value);
-  if (Number.isNaN(num)) return `${fieldName}ต้องเป็นตัวเลข`;
-  if (num < 0) return `${fieldName}ต้องไม่ติดลบ`;
-  return null;
-}
-
-/**
- * Validate positive number (must be > 0)
- */
-export function validatePositiveNumber(value, fieldName = "ค่า") {
-  if (value === "" || value === null || value === undefined) return null;
-  const num = parseFloat(value);
-  if (Number.isNaN(num)) return `${fieldName}ต้องเป็นตัวเลข`;
-  if (num <= 0) return `${fieldName}ต้องมากกว่า 0`;
-  return null;
-}
-
-/**
  * Validate required text field
  */
 export function validateRequired(value, fieldName = "ฟิลด์นี้") {

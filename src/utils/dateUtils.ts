@@ -30,7 +30,7 @@ export function formatYmThai(ym: string): string {
 
 /** ระยะเวลาทำงาน: "X ปี Y เดือน" / "Y เดือน" / "X ปี" / "เพิ่งเริ่มงาน"
  *  startWorkMonth: "YYYY-MM" (ค.ศ.) · null/invalid → "" (caller ซ่อนไป)
- *  ใช้ทั้ง EmployeeEditModal label + ใบรับรองเงินเดือน — เก็บสูตรที่เดียว */
+ *  ใช้ใน EmployeeEditModal label — เก็บสูตรที่เดียว */
 export function formatTenure(startWorkMonth?: string | null): string {
   if (!startWorkMonth || !/^\d{4}-\d{2}$/.test(startWorkMonth)) return "";
   const [y, m] = startWorkMonth.split("-").map(Number);
@@ -52,7 +52,7 @@ export function formatTenure(startWorkMonth?: string | null): string {
  *  - calendar = undefined → default rule: เสาร์ไม่นับ (ปิดอยู่เป็น default)
  *  - calendar ส่งมา → เสาร์เปิดพิเศษ "นับ" · จ-ศ ปิดพิเศษ "ไม่นับ" ·
  *    อาทิตย์ปิดพิเศษ "ไม่นับ"
- *    (ใช้กฎเดียวกับ isStoreClosed ใน salary calc · ไม่ต้องสร้างกฎซ้ำ)        */
+ *    (ใช้กฎเดียวกับ isStoreClosed ใน storeCalendar · ไม่ต้องสร้างกฎซ้ำ)      */
 export function countWorkdays(
   s: string,
   e: string,
@@ -76,7 +76,7 @@ export function countWorkdays(
       // เสาร์: ปิด default · เปิดได้ถ้า admin mark
       isClosed = !(calendar?.extraOpenSaturdays || []).includes(ymd);
     } else if (dow === 0) {
-      // อาทิตย์: เปิด default (× 1.5 ลาก็นับ) · ปิดได้ถ้า admin mark
+      // อาทิตย์: เปิด default (ลาก็นับ · หักแยก) · ปิดได้ถ้า admin mark
       isClosed = (calendar?.extraClosedSundays || []).includes(ymd);
     } else {
       // จ-ศ: เปิด default · ปิดได้ถ้า admin mark
@@ -134,7 +134,7 @@ export function fmtShortWithWeekday(d: string): string {
   return `${THAI_SHORT_WEEKDAY_NAMES[dt.getDay()]}. ${fmtShort(d)}`;
 }
 
-/* "YYYY-MM" ของวันนี้ — ใช้ join key salary/advance/loan */
+/* "YYYY-MM" ของวันนี้ — ใช้เป็น key ของเดือนที่กำลังดู */
 export function currentYearMonth(): string {
   return TODAY.slice(0, 7);
 }

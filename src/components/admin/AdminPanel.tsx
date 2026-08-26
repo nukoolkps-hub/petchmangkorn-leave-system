@@ -51,8 +51,8 @@ export default function AdminPanel({
   const [employeeEditingId, setEmployeeEditingId] = useState<string | null>(
     null,
   );
-  // เดือนที่ admin กำลังดู (YYYY-MM) — share ระหว่าง section การลา/เงินเดือน/
-  // จ่ายเงิน · admin เลือก ส.ค. ในแท็บค่าคอม → ไปแท็บจ่ายเงิน ยังเป็น ส.ค.
+  // เดือนที่ admin กำลังดู (YYYY-MM) — share ระหว่าง "สรุปลา" กับ
+  // "เพิ่ม-ลบการลา" · เลือก ส.ค. ในแท็บหนึ่ง อีกแท็บตามด้วย
   // default = เดือนปัจจุบัน (todayYmd() กัน stale ข้าม midnight)
   const [adminMonth, setAdminMonth] = useState(() => todayYmd().slice(0, 7));
 

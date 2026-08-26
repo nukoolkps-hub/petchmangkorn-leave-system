@@ -5,9 +5,6 @@ import {
   Stethoscope as IconStethoscope,
 } from "lucide-react";
 
-export const FONT_LINK =
-  "https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap";
-
 export const COLORS = {
   maroon: "#7B1C1C",
   maroonDark: "#5C1212",
@@ -129,11 +126,17 @@ export const TODAY = (() => {
    ค่าเหล่านี้คือ "สูตร/กฎของบริษัท" — แก้ที่นี่ที่เดียวจะปรับทุกที่
    อนาคต: ย้ายไปเป็น settings ใน admin panel ให้แก้ผ่าน UI ได้     */
 export const BUSINESS_RULES = {
-  /** โควต้าวันลาธรรมดา (วัน/เดือน) — เกินจากนี้ถือว่า "เกินโควต้า" */
-  WEEKDAY_LEAVE_QUOTA: 2,
+  /** โควต้าวันลาธรรมดา (วัน/เดือน) — เกินจากนี้ถูกหักเป็นรายวัน */
+  WEEKDAY_LEAVE_QUOTA: 1,
 
   /** จำนวนวันสูงสุดต่อใบลา 1 ใบ (กันกรอกช่วงยาวผิดพลาด) */
   MAX_LEAVE_DAYS_PER_REQUEST: 31,
+
+  /** หักต่อ 1 วันธรรมดาที่ลา "เกินโควต้า" (บาท) */
+  OVER_QUOTA_WEEKDAY_DEDUCTION: 300,
+
+  /** หักต่อ 1 วันอาทิตย์ที่ลา (ร้านเปิด) — หักทันที ไม่ใช้โควต้า (บาท) */
+  SUNDAY_LEAVE_DEDUCTION: 500,
 };
 
 /* ─── Validation patterns ─────────────────────────────────────────── */

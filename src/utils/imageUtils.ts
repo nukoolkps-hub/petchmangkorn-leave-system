@@ -103,18 +103,6 @@ export async function resizeAvatar(file: File): Promise<string> {
   });
 }
 
-/**
- * Resize slip (สลิปการโอน) — กว้างกว่า + คุณภาพดี
- */
-export async function resizeSlip(file: File): Promise<string> {
-  return resizeImage(file, {
-    maxWidth: 1000,
-    maxHeight: 1400,
-    quality: 0.88,
-    maxBytes: 700 * 1024,
-  });
-}
-
 /* ─── Internal helpers ───────────────────────────────────────── */
 
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -160,8 +148,3 @@ function estimateBase64Bytes(dataUrl: string): number {
 }
 
 /* ─── Format byte count for display ────────────────────────── */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}

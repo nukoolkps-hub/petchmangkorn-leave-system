@@ -1,6 +1,6 @@
 /* ─── ModalHeader — หัวโมดอลมาตรฐาน (icon + title + subtitle + ปิด) ──
    sticky bar บนสุดของ BaseModal · ใช้ร่วมกันทุกโมดอลที่มีหัวแบบนี้
-   (DutyForecastModal, RoleMainDutiesModal, ฯลฯ) — แก้สไตล์ที่เดียว */
+   (EmployeeEditModal, ManualModal, ฯลฯ) — แก้สไตล์ที่เดียว */
 
 import { X as IconX, type LucideIcon } from "lucide-react";
 

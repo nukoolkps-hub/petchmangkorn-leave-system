@@ -10,8 +10,13 @@ import {
 import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { dateRange } from "../../utils/dateUtils";
-import { countWeekdayLeaves, leaveOverlapsMonth } from "../../utils/leaveUtils";
+import {
+  countWeekdayLeaves,
+  getLeaveDeduction,
+  leaveOverlapsMonth,
+} from "../../utils/leaveUtils";
 import { isStoreClosed } from "../../utils/storeCalendar";
+import DeductionSummary from "../shared/DeductionSummary";
 import { MemphisCornerSticker } from "../shared/MemphisPattern";
 import TeamCalendar from "./TeamCalendar";
 
@@ -35,7 +40,7 @@ export default function HomeTab({
   const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   /* ─── Monthly quota — count weekday days (Mon-Fri) ไม่ใช่จำนวนใบลา
-       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหัก × 1.5 ไม่นับโควต้า */
+       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักทันที ไม่นับโควต้า */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv) =>
@@ -49,7 +54,13 @@ export default function HomeTab({
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const remaining = quota - usedThisMonth;
-  const overQuotaDeduction = remaining < 0;
+  // ยอดหักเดือนนี้ — วันธรรมดาที่เกินโควต้า + วันอาทิตย์ที่ลา (หักทันที)
+  const deduction = getLeaveDeduction(
+    monthLeavesForQuota,
+    storeCalendar,
+    yearMonth,
+  );
+  const overQuotaDeduction = deduction.total > 0;
 
   return (
     <>
@@ -160,16 +171,20 @@ export default function HomeTab({
               className="text-txt-mid"
             />
             <span className="text-sm text-txt-mid">
-              ลากิจ + ลาป่วย รวม 2 วัน/เดือน
+              ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
             </span>
           </div>
           <div className="w-full text-xs text-txt-soft mt-1">
-            นับเฉพาะวันธรรมดา · วันอาทิตย์หักแยก (ไม่กินโควต้า)
+            นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
+            บาททันที (ไม่กินโควต้า)
           </div>
         </div>
 
-        {/* banner – แสดงตั้งแต่ครั้งที่ 2 เป็นต้นไป */}
-        {usedThisMonth >= quota && (
+        {/* ยอดหักจริงของเดือนนี้ — โชว์เฉพาะเมื่อมียอด */}
+        <DeductionSummary deduction={deduction} title="ยอดถูกหักเดือนนี้" />
+
+        {/* เตือนล่วงหน้าเมื่อโควต้าหมดแล้วแต่ยังไม่มียอดหัก */}
+        {usedThisMonth >= quota && deduction.total === 0 && (
           <div className="mt-3 bg-linear-to-br from-red/6 to-red/9 rounded-xl px-3.5 py-2.5 border border-red/19 flex items-center gap-2.5">
             <IconWallet
               size={22}
@@ -177,8 +192,11 @@ export default function HomeTab({
               className="text-red shrink-0"
             />
             <div className="text-sm text-red font-semibold leading-relaxed">
-              การลาครั้งถัดไป
-              <span className="font-bold"> จะกระทบต่อเงินเดือน</span>
+              ใช้โควต้าครบแล้ว — ลาวันธรรมดาครั้งถัดไป
+              <span className="font-bold">
+                {" "}
+                หัก {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท/วัน
+              </span>
             </div>
           </div>
         )}
@@ -186,7 +204,7 @@ export default function HomeTab({
 
       {/* leave type mini stats — นับ "วันลา" จากปฏิทิน แยกตามประเภท ·
           ตัดวันร้านปิด (เสาร์ปิด/วันปิดพิเศษ) ออก เพราะลาวันร้านปิด
-          ไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ · ไม่เกี่ยวกับ logic เงินเดือน */}
+          ไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ · ไม่เกี่ยวกับยอดหัก */}
       <div className="grid grid-cols-2 gap-2.5 mb-1.5">
         {LEAVE_TYPES.map((lt) => {
           const usedType = profile
