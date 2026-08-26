@@ -1,14 +1,22 @@
 /* ─── Submit-Leave Confirm Modal ────────────────────────────────
-   ขึ้นก่อนยื่นใบลาจริง — สรุปประเภท/ช่วงวัน/จำนวนวัน ให้พนักงานยืนยันก่อน
-   เพื่อกันการกดผิด · เปิดเฉพาะเมื่อ validate ผ่านแล้ว */
+   ขึ้นก่อนยื่นใบลาจริง — สรุปประเภท/ช่วงวัน/จำนวนวัน + ยอดที่จะถูกหัก
+   ให้พนักงานยืนยันก่อน เพื่อกันการกดผิด · เปิดเฉพาะเมื่อ validate ผ่านแล้ว
+
+   ลาวันอาทิตย์ = หักทันทีทุกวัน (ไม่มีโควต้าช่วย) → บังคับติ๊กยืนยัน
+   ก่อนกดส่งได้ กันกดผ่านโดยไม่ทันอ่าน                                 */
 
 import {
   CalendarRange as IconCalendarRange,
   Check as IconCheck,
+  Sun as IconSun,
 } from "lucide-react";
-import { LEAVE_TYPES } from "../../constants";
+import { useState } from "react";
+import { BUSINESS_RULES, LEAVE_TYPES } from "../../constants";
 import { fmtDate } from "../../utils/dateUtils";
+import { formatBaht } from "../../utils/format";
+import type { LeaveDeduction } from "../../utils/leaveUtils";
 import BaseModal from "../shared/BaseModal";
+import DeductionSummary from "../shared/DeductionSummary";
 import Spinner from "../shared/Spinner";
 
 interface Props {
@@ -16,6 +24,8 @@ interface Props {
   startDate: string;
   endDate: string;
   days: number;
+  /** ยอดที่ใบลานี้จะถูกหักเพิ่ม (จาก getAdditionalDeduction) */
+  deduction: LeaveDeduction;
   saving?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -26,11 +36,15 @@ export default function SubmitLeaveConfirmModal({
   startDate,
   endDate,
   days,
+  deduction,
   saving = false,
   onConfirm,
   onCancel,
 }: Props) {
   const lt = LEAVE_TYPES.find((t) => t.id === type);
+  const needsSundayAck = deduction.sundayDays > 0;
+  const [sundayAcked, setSundayAcked] = useState(false);
+  const blocked = needsSundayAck && !sundayAcked;
   return (
     <BaseModal
       onClose={saving ? () => {} : onCancel}
@@ -62,7 +76,40 @@ export default function SubmitLeaveConfirmModal({
         <br />
         <span className="text-sm text-txt-soft">({days} วันทำการ)</span>
       </div>
-      <div className="flex gap-2.5">
+      <DeductionSummary deduction={deduction} title="ใบลานี้จะถูกหัก" />
+
+      {needsSundayAck && (
+        <button
+          type="button"
+          onClick={() => setSundayAcked((v) => !v)}
+          aria-pressed={sundayAcked}
+          className="w-full text-left rounded-xl border-[1.5px] border-[#C0392B50] bg-[#FEF2F2] px-4 py-3 mt-3 flex items-start gap-3 cursor-pointer font-[inherit]"
+        >
+          <span
+            className={`mt-0.5 w-5 h-5 rounded-[6px] border-[1.5px] shrink-0 flex items-center justify-center transition-colors ${
+              sundayAcked ? "bg-red border-red" : "bg-white border-[#C0392B70]"
+            }`}
+          >
+            {sundayAcked && (
+              <IconCheck size={13} strokeWidth={3} className="text-white" />
+            )}
+          </span>
+          <span className="text-sm text-red font-semibold leading-relaxed">
+            <span className="inline-flex items-center gap-1 font-bold">
+              <IconSun size={13} strokeWidth={2.6} />
+              ลาวันอาทิตย์ {deduction.sundayDays} วัน
+            </span>
+            <br />
+            รับทราบว่าจะถูกหัก{" "}
+            {formatBaht(
+              deduction.sundayDays * BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION,
+            )}{" "}
+            (วันอาทิตย์หักทันที ไม่มีโควต้า)
+          </span>
+        </button>
+      )}
+
+      <div className="flex gap-2.5 mt-3">
         <button
           type="button"
           onClick={onCancel}
@@ -74,7 +121,7 @@ export default function SubmitLeaveConfirmModal({
         <button
           type="button"
           onClick={onConfirm}
-          disabled={saving}
+          disabled={saving || blocked}
           className="flex-1 p-3.5 rounded-xl border-none bg-linear-135 from-maroon to-maroon-lt text-white text-base font-bold cursor-pointer font-[inherit] disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_4px_12px_rgba(123,28,28,0.31)] inline-flex items-center justify-center gap-2"
         >
           {saving ? (

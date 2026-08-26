@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { BUSINESS_RULES } from "../constants";
 import type { StoreCalendar } from "../types";
 import {
   countWeekdayLeaves,
+  getAdditionalDeduction,
+  getLeaveDeduction,
   getOverQuotaDays,
   leaveOverlapsMonth,
 } from "./leaveUtils";
@@ -32,24 +35,28 @@ describe("countWeekdayLeaves", () => {
 });
 
 describe("getOverQuotaDays", () => {
-  it("gives the first 2 weekday leave days free", () => {
-    // 2 weekdays → nothing over quota
+  it("gives only the first weekday leave day free (quota = 1)", () => {
+    // Mon 08 alone → still inside the 1-day quota
+    expect(
+      getOverQuotaDays([{ start: "2026-06-08", end: "2026-06-08" }]),
+    ).toEqual({ weekdays: 0, sundays: 0 });
+    // Mon 08 + Tue 09 → the second day is already over quota
     expect(
       getOverQuotaDays([{ start: "2026-06-08", end: "2026-06-09" }]),
-    ).toEqual({ weekdays: 0, sundays: 0 });
+    ).toEqual({ weekdays: 1, sundays: 0 });
   });
 
-  it("charges weekday days beyond the 2-day quota", () => {
-    // Mon–Fri = 5 weekdays → 5 - 2 = 3 over quota
+  it("charges weekday days beyond the 1-day quota", () => {
+    // Mon–Fri = 5 weekdays → 5 - 1 = 4 over quota
     expect(
       getOverQuotaDays([{ start: "2026-06-08", end: "2026-06-12" }]),
-    ).toEqual({ weekdays: 3, sundays: 0 });
+    ).toEqual({ weekdays: 4, sundays: 0 });
   });
 
   it("counts a long single leave by DAY, not by entry (no full-month free ride)", () => {
-    // one entry spanning 5 weekdays must still cost 3 over-quota days
+    // one entry spanning 5 weekdays must still cost 4 over-quota days
     const res = getOverQuotaDays([{ start: "2026-06-08", end: "2026-06-12" }]);
-    expect(res.weekdays).toBe(3);
+    expect(res.weekdays).toBe(4);
   });
 
   it("dedupes overlapping leave entries so a day is not double-counted", () => {
@@ -57,8 +64,8 @@ describe("getOverQuotaDays", () => {
       { start: "2026-06-08", end: "2026-06-10" },
       { start: "2026-06-09", end: "2026-06-12" }, // overlaps 09–10
     ]);
-    // union = Mon..Fri = 5 unique weekdays → 3 over quota
-    expect(res).toEqual({ weekdays: 3, sundays: 0 });
+    // union = Mon..Fri = 5 unique weekdays → 4 over quota
+    expect(res).toEqual({ weekdays: 4, sundays: 0 });
   });
 
   it("charges every Sunday immediately (no quota) when the store is open", () => {
@@ -81,9 +88,9 @@ describe("getOverQuotaDays", () => {
   });
 
   it("separates weekday and Sunday charges across a week-long leave", () => {
-    // Mon 08 → Sun 14: weekdays Mon-Fri (5) → 3 over quota; Sat 13 closed; Sun 14 charged
+    // Mon 08 → Sun 14: weekdays Mon-Fri (5) → 4 over quota; Sat 13 closed; Sun 14 charged
     const res = getOverQuotaDays([{ start: "2026-06-08", end: "2026-06-14" }]);
-    expect(res).toEqual({ weekdays: 3, sundays: 1 });
+    expect(res).toEqual({ weekdays: 4, sundays: 1 });
   });
 });
 
@@ -111,15 +118,154 @@ describe("cross-month leave clamping", () => {
   });
 
   it("getOverQuotaDays clamps to the given month (each month its own days)", () => {
-    // May: 1 weekday (under 2-day quota) + Sun 31 charged
+    // May: 1 weekday (exactly the 1-day quota) + Sun 31 charged
     expect(getOverQuotaDays(crossLeave, null, "2026-05")).toEqual({
       weekdays: 0,
       sundays: 1,
     });
-    // June: 3 weekdays → 1 over quota, no Sunday
+    // June: 3 weekdays → 2 over quota, no Sunday
     expect(getOverQuotaDays(crossLeave, null, "2026-06")).toEqual({
-      weekdays: 1,
+      weekdays: 2,
       sundays: 0,
     });
+  });
+});
+
+// ── ค่าหักเงิน ──────────────────────────────────────────────────
+// อัตราอ่านจาก BUSINESS_RULES เพื่อให้เทสต์ไม่พังตอนร้านปรับราคา —
+// สิ่งที่ล็อกไว้คือ "จำนวนวันที่ถูกหัก" ไม่ใช่ตัวเลขบาทที่ hardcode
+const WEEKDAY_RATE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
+const SUNDAY_RATE = BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION;
+
+describe("getLeaveDeduction", () => {
+  it("charges nothing when the leave stays inside the quota", () => {
+    expect(
+      getLeaveDeduction([{ start: "2026-06-08", end: "2026-06-08" }]),
+    ).toEqual({
+      weekdayDays: 0,
+      sundayDays: 0,
+      weekdayAmount: 0,
+      sundayAmount: 0,
+      total: 0,
+    });
+  });
+
+  it("charges the weekday rate for each day past the quota", () => {
+    // Mon 08 free (quota), Tue 09 charged
+    const res = getLeaveDeduction([{ start: "2026-06-08", end: "2026-06-09" }]);
+    expect(res.weekdayDays).toBe(1);
+    expect(res.weekdayAmount).toBe(WEEKDAY_RATE);
+    expect(res.total).toBe(WEEKDAY_RATE);
+  });
+
+  it("charges the Sunday rate from the very first Sunday — quota does not apply", () => {
+    const res = getLeaveDeduction([{ start: "2026-06-07", end: "2026-06-07" }]);
+    expect(res).toEqual({
+      weekdayDays: 0,
+      sundayDays: 1,
+      weekdayAmount: 0,
+      sundayAmount: SUNDAY_RATE,
+      total: SUNDAY_RATE,
+    });
+  });
+
+  it("adds both kinds of charge together", () => {
+    // Mon 08 → Sun 14: 4 weekdays over quota + 1 Sunday
+    const res = getLeaveDeduction([{ start: "2026-06-08", end: "2026-06-14" }]);
+    expect(res.weekdayAmount).toBe(4 * WEEKDAY_RATE);
+    expect(res.sundayAmount).toBe(SUNDAY_RATE);
+    expect(res.total).toBe(4 * WEEKDAY_RATE + SUNDAY_RATE);
+  });
+
+  it("charges nothing for days the store is closed", () => {
+    // Sat 06 closed by default + Sun 07 marked closed by admin
+    const cal = { extraClosedSundays: ["2026-06-07"] } as StoreCalendar;
+    const res = getLeaveDeduction(
+      [{ start: "2026-06-06", end: "2026-06-07" }],
+      cal,
+    );
+    expect(res.total).toBe(0);
+  });
+
+  it("keeps each month's quota separate for a cross-month leave", () => {
+    const crossLeave = [{ start: "2026-05-29", end: "2026-06-03" }];
+    // May: Fri 29 uses the quota, Sun 31 charged
+    expect(getLeaveDeduction(crossLeave, null, "2026-05").total).toBe(
+      SUNDAY_RATE,
+    );
+    // June: Mon–Wed = 3 weekdays → 2 over quota
+    expect(getLeaveDeduction(crossLeave, null, "2026-06").total).toBe(
+      2 * WEEKDAY_RATE,
+    );
+  });
+});
+
+describe("getAdditionalDeduction", () => {
+  it("is free when the month's quota has not been used yet", () => {
+    const res = getAdditionalDeduction([], {
+      start: "2026-06-08",
+      end: "2026-06-08",
+    });
+    expect(res.total).toBe(0);
+  });
+
+  it("charges the first weekday once the quota is already spent", () => {
+    // Mon 08 already taken → Tue 09 costs the weekday rate
+    const res = getAdditionalDeduction(
+      [{ start: "2026-06-08", end: "2026-06-08" }],
+      { start: "2026-06-09", end: "2026-06-09" },
+    );
+    expect(res.weekdayDays).toBe(1);
+    expect(res.total).toBe(WEEKDAY_RATE);
+  });
+
+  it("charges a Sunday even when the quota is untouched", () => {
+    const res = getAdditionalDeduction([], {
+      start: "2026-06-07",
+      end: "2026-06-07",
+    });
+    expect(res.sundayDays).toBe(1);
+    expect(res.total).toBe(SUNDAY_RATE);
+  });
+
+  it("only bills the increment the new leave adds, not the existing total", () => {
+    // existing Mon–Wed already costs 2 over-quota days;
+    // adding Thu 11 must bill exactly 1 more day, not 3
+    const existing = [{ start: "2026-06-08", end: "2026-06-10" }];
+    const res = getAdditionalDeduction(existing, {
+      start: "2026-06-11",
+      end: "2026-06-11",
+    });
+    expect(res.weekdayDays).toBe(1);
+    expect(res.total).toBe(WEEKDAY_RATE);
+  });
+
+  it("does not double-bill a day that overlaps an existing leave", () => {
+    const existing = [{ start: "2026-06-08", end: "2026-06-10" }];
+    const res = getAdditionalDeduction(existing, {
+      start: "2026-06-09",
+      end: "2026-06-10",
+    });
+    expect(res.total).toBe(0);
+  });
+
+  it("spreads a cross-month request across both months' quotas", () => {
+    // Fri 29 May → Wed 03 Jun with nothing booked yet:
+    // May → Fri 29 free (quota) + Sun 31 charged · June → 3 weekdays, 2 over quota
+    const res = getAdditionalDeduction([], {
+      start: "2026-05-29",
+      end: "2026-06-03",
+    });
+    expect(res.sundayDays).toBe(1);
+    expect(res.weekdayDays).toBe(2);
+    expect(res.total).toBe(SUNDAY_RATE + 2 * WEEKDAY_RATE);
+  });
+
+  it("returns nothing for an incomplete or reversed date range", () => {
+    expect(getAdditionalDeduction([], { start: "", end: "" }).total).toBe(0);
+    expect(
+      getAdditionalDeduction([], { start: "2026-06-10", end: "2026-06-08" })
+        .total,
+    ).toBe(0);
   });
 });

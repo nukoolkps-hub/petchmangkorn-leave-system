@@ -5,12 +5,16 @@ import {
   CalendarRange as IconCalendarRange,
   Cross as IconCross,
   Sun as IconSun,
+  Wallet as IconWallet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
+import { formatBaht } from "../../utils/format";
+import { getLeaveDeduction } from "../../utils/leaveUtils";
 import AvatarCircle from "../shared/AvatarCircle";
+import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
 import ThemedSelect from "../shared/ThemedSelect";
 
@@ -35,7 +39,9 @@ function LeaveDayBreakdown({
         <span className="inline-flex items-center gap-1">
           <IconSun size={10} strokeWidth={2.4} />
           วันอาทิตย์ × {sundays}
-          <span className="opacity-70">(×1.5)</span>
+          <span className="opacity-70">
+            (−{BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION})
+          </span>
         </span>
       )}
     </div>
@@ -125,6 +131,23 @@ export default function LeaveSummaryPanel({
   const effectiveMonth = months.includes(selectedMonth)
     ? selectedMonth
     : currentMonth;
+  /* ยอดหักรวมทั้งร้านในเดือนที่กำลังดู — คิดแยกรายคนก่อนแล้วค่อยรวม
+     เพราะโควต้าเป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน */
+  const monthDeductionTotal = useMemo(
+    () =>
+      employeeDirectory.reduce((sum, emp) => {
+        const empLeaves = allLeaves.filter(
+          (lv) =>
+            lv.employeeId === emp.id && lv.start.startsWith(effectiveMonth),
+        );
+        return (
+          sum +
+          getLeaveDeduction(empLeaves, storeCalendar, effectiveMonth).total
+        );
+      }, 0),
+    [allLeaves, employeeDirectory, storeCalendar, effectiveMonth],
+  );
+
   const years: string[] = (
     [...new Set(allLeaves.map((lv) => lv.start.slice(0, 4)))] as string[]
   )
@@ -146,6 +169,17 @@ export default function LeaveSummaryPanel({
             onSelect={onSelectMonth}
           />
         </div>
+        {monthDeductionTotal > 0 && (
+          <div className="rounded-xl border-[1.5px] border-[#C0392B40] bg-[#FEF2F2] px-3.5 py-2.5 mb-3 flex items-center justify-between gap-3">
+            <span className="text-sm font-bold text-red inline-flex items-center gap-1.5">
+              <IconWallet size={14} strokeWidth={2.4} />
+              ยอดหักรวมทั้งเดือน
+            </span>
+            <span className="text-lg font-extrabold text-red">
+              {formatBaht(monthDeductionTotal)}
+            </span>
+          </div>
+        )}
         {employeeDirectory.length === 0 && (
           <div className="text-txt-soft text-sm text-center py-4">ไม่มีข้อมูล</div>
         )}
@@ -176,6 +210,13 @@ export default function LeaveSummaryPanel({
               // จำนวน "วัน" → 1 ใบลา 4 วันธรรมดา ก็ไม่แดง · ที่ถูกต้องคือ
               // เปรียบเทียบจำนวน "วันธรรมดา" กับโควต้า (กฎ: ≤ 2 วัน/เดือน)
               const overQuota = weekdays > BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+              // ยอดหักของคนนี้ในเดือนนี้ — clamp ด้วย effectiveMonth เพื่อให้
+              // ใบลาคร่อมเดือนคิดเฉพาะวันของเดือนที่กำลังดู
+              const deduction = getLeaveDeduction(
+                monthLeaves,
+                storeCalendar,
+                effectiveMonth,
+              );
               return (
                 <div
                   key={empId}
@@ -215,6 +256,10 @@ export default function LeaveSummaryPanel({
                           เกินโควต้า
                         </div>
                       )}
+                      <DeductionSummary
+                        deduction={deduction}
+                        variant="compact"
+                      />
                     </div>
                   </div>
                   <div className="flex gap-1.5 flex-wrap items-center">
