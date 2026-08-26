@@ -49,7 +49,7 @@ describe("isQuotaCountableDay", () => {
     expect(isQuotaCountableDay(FRI)).toBe(true);
   });
 
-  it("never counts Sunday (separate ×1.5 rule), even when the store is open", () => {
+  it("never counts Sunday (charged separately), even when the store is open", () => {
     expect(isQuotaCountableDay(SUN)).toBe(false);
   });
 

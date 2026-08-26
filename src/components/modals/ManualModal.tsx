@@ -9,11 +9,17 @@ import {
   Store as IconStore,
   Sun as IconSun,
 } from "lucide-react";
-import { COLORS } from "../../constants";
+import { BUSINESS_RULES, COLORS } from "../../constants";
 import BaseModal from "../shared/BaseModal";
 import { Box, Card, Section } from "../shared/Layout";
 
-/* ─── Manual / User Guide Modal ────────────────────────────────── */
+/* ─── Manual / User Guide Modal ──────────────────────────────────
+   ตัวเลขโควต้า/อัตราหักดึงจาก BUSINESS_RULES เสมอ — ห้าม hardcode
+   ไม่งั้นคู่มือกับระบบจะพูดคนละเรื่องตอนร้านปรับกฎ                     */
+const QUOTA = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+const WEEKDAY_FINE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
+const SUNDAY_FINE = BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION;
+
 export default function ManualModal({ onClose }) {
   return (
     <BaseModal
@@ -46,8 +52,22 @@ export default function ManualModal({ onClose }) {
           color={COLORS.maroon}
         >
           <p>
-            ทุกคนได้โควต้า <b>ลากิจ + ลาป่วย รวม 2 วัน/เดือน</b>
+            ทุกคนได้โควต้า <b>ลากิจ + ลาป่วย รวม {QUOTA} วัน/เดือน</b> (เฉพาะวันธรรมดา)
           </p>
+          <ul className="mt-1.5">
+            <li>
+              ลาวันธรรมดา <b>เกินโควต้า</b> → หัก{" "}
+              <b className="text-red">{WEEKDAY_FINE} บาท/วัน</b>
+            </li>
+            <li>
+              ลา <b>วันอาทิตย์</b> → หัก{" "}
+              <b className="text-red">{SUNDAY_FINE} บาท/วัน ทันที</b> ตั้งแต่วันแรก
+              (โควต้าไม่ช่วย)
+            </li>
+            <li>
+              ลา <b>วันที่ร้านปิด</b> → ไม่นับ ไม่หัก
+            </li>
+          </ul>
         </Section>
 
         <Section
@@ -70,11 +90,12 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                มี <b>โควต้า 2 วัน/เดือน</b>
+                มี <b>โควต้า {QUOTA} วัน/เดือน</b>
               </li>
               <li>
-                ลาเกินโควต้า → ระบบขึ้นสถานะ <b className="text-red">เกินโควต้า</b> ให้
-                ADMIN เห็น
+                ลาเกินโควต้า → หัก <b className="text-red">{WEEKDAY_FINE} บาท</b>{" "}
+                ต่อวันที่เกิน + ขึ้นสถานะ <b className="text-red">เกินโควต้า</b> ให้ ADMIN
+                เห็น
               </li>
             </ul>
           </Card>
@@ -89,10 +110,16 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                <b>นับแยก</b> ไม่กินโควต้าวันธรรมดา
+                <b>นับแยก</b> ไม่กินโควต้าวันธรรมดา — แต่{" "}
+                <b className="text-red">หัก {SUNDAY_FINE} บาท/วัน ทันที</b>{" "}
+                ตั้งแต่วันแรก
+              </li>
+              <li>
+                ตอนยื่นลาที่มีวันอาทิตย์ ระบบจะให้ <b>ติ๊กรับทราบยอดหักก่อน</b> ถึงจะกดส่งได้
               </li>
               <li className="text-xs text-txt-soft">
-                ยกเว้น <b>อาทิตย์ที่ ADMIN ปิดพิเศษ</b> → ร้านปิด · ลาไม่นับ (ดูหัวข้อด้านล่าง)
+                ยกเว้น <b>อาทิตย์ที่ ADMIN ปิดพิเศษ</b> → ร้านปิด · ลาไม่นับ ไม่หัก
+                (ดูหัวข้อด้านล่าง)
               </li>
             </ul>
           </Card>
@@ -115,17 +142,17 @@ export default function ManualModal({ onClose }) {
             title={
               <span className="inline-flex items-center gap-1.5">
                 <IconClipboardList size={14} strokeWidth={2.4} />
-                การ์ด "โควต้าการลา X / 2 วัน"
+                การ์ด "โควต้าการลา X / {QUOTA} วัน"
               </span>
             }
             color={COLORS.text}
           >
             <ul>
               <li>
-                นับ <b>เฉพาะวันธรรมดา</b> ที่ใช้โควต้า · <b>วันอาทิตย์ไม่นับ</b> (หัก × 1.5
-                แยกต่างหาก)
+                นับ <b>เฉพาะวันธรรมดา</b> ที่ใช้โควต้า · <b>วันอาทิตย์ไม่นับ</b> (หัก{" "}
+                {SUNDAY_FINE} บาท แยกต่างหาก)
               </li>
-              <li>ไว้ดูว่าเหลือโควต้ากี่วัน + เตือนเมื่อลาเกิน</li>
+              <li>ไว้ดูว่าเหลือโควต้ากี่วัน + โชว์ยอดที่ถูกหักเดือนนี้</li>
             </ul>
           </Card>
           <Card
@@ -156,11 +183,12 @@ export default function ManualModal({ onClose }) {
           <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
             <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">
               <IconSun size={14} strokeWidth={2.4} />
-              ในประวัติการลา — ป้าย "อาทิตย์ ×1.5"
+              ในประวัติการลา — ป้าย "อาทิตย์ −{SUNDAY_FINE}"
             </div>
             <p>
-              ใบลาที่ตรง/คร่อม <b>วันอาทิตย์ที่ร้านเปิด</b> จะมีป้าย <b>"อาทิตย์ ×1.5"</b>{" "}
-              เตือนว่าวันนั้นถูกหัก × 1.5 และไม่กินโควต้า วันธรรมดา
+              ใบลาที่ตรง/คร่อม <b>วันอาทิตย์ที่ร้านเปิด</b> จะมีป้าย{" "}
+              <b>"อาทิตย์ −{SUNDAY_FINE}"</b> เตือนว่าวันนั้นถูกหัก {SUNDAY_FINE} บาท
+              และไม่กินโควต้าวันธรรมดา
             </p>
           </Box>
         </Section>
@@ -181,7 +209,7 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               ถ้า ADMIN กำหนด "เสาร์เปิดพิเศษ" → <b>ลาเสาร์นั้นนับเหมือนวันธรรมดา</b>{" "}
-              (เข้าโควต้า 2 วัน/เดือน · เกินหัก × 1)
+              (เข้าโควต้า {QUOTA} วัน/เดือน · เกินหัก {WEEKDAY_FINE} บาท/วัน)
             </li>
             <li>
               ถ้า ADMIN กำหนด "วันธรรมดาปิดพิเศษ" (อบรม, หยุดยาว ฯลฯ) →{" "}
@@ -189,7 +217,7 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               ถ้า ADMIN กำหนด "อาทิตย์ปิดพิเศษ" → อาทิตย์นั้นกลายเป็นวันร้านปิด ·{" "}
-              <b>ลาวันนั้นไม่นับ · ไม่หัก × 1.5</b> (ปกติอาทิตย์เปิด × 1.5)
+              <b>ลาวันนั้นไม่นับ · ไม่หัก</b> (ปกติอาทิตย์เปิดหัก {SUNDAY_FINE} บาท)
             </li>
           </ul>
 
@@ -261,8 +289,8 @@ export default function ManualModal({ onClose }) {
               <b>ลาป่วยล่วงหน้าได้ไม่เกิน 2 อาทิตย์</b> — เลือกวันได้ไม่เกิน 14 วันนับจากวันนี้
             </li>
             <li>
-              <b>ลากิจ</b> — ลาล่วงหน้าได้ ไม่ติดเพดาน 2 อาทิตย์เหมือนลาป่วย (ยังอยู่ในโควต้า
-              2 วัน/เดือนเหมือนเดิม)
+              <b>ลากิจ</b> — ลาล่วงหน้าได้ ไม่ติดเพดาน 2 อาทิตย์เหมือนลาป่วย (ยังอยู่ในโควต้า{" "}
+              {QUOTA} วัน/เดือนเหมือนเดิม)
             </li>
           </ul>
         </Section>

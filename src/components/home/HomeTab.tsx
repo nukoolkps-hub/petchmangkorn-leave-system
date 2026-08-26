@@ -40,7 +40,7 @@ export default function HomeTab({
   const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   /* ─── Monthly quota — count weekday days (Mon-Fri) ไม่ใช่จำนวนใบลา
-       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหัก × 1.5 ไม่นับโควต้า */
+       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักทันที ไม่นับโควต้า */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv) =>

@@ -208,7 +208,7 @@ export default function LeaveSummaryPanel({
                 .reduce((s, lv) => s + lv.days, 0);
               // bug fix: เดิม `totalTimes > 2` เปรียบเทียบจำนวน "ใบลา" ไม่ใช่
               // จำนวน "วัน" → 1 ใบลา 4 วันธรรมดา ก็ไม่แดง · ที่ถูกต้องคือ
-              // เปรียบเทียบจำนวน "วันธรรมดา" กับโควต้า (กฎ: ≤ 2 วัน/เดือน)
+              // เปรียบเทียบจำนวน "วันธรรมดา" กับโควต้าใน BUSINESS_RULES
               const overQuota = weekdays > BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
               // ยอดหักของคนนี้ในเดือนนี้ — clamp ด้วย effectiveMonth เพื่อให้
               // ใบลาคร่อมเดือนคิดเฉพาะวันของเดือนที่กำลังดู

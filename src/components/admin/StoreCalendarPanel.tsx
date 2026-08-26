@@ -2,7 +2,7 @@
    3 การ์ดในหน้าเดียว:
    1. เสาร์เปิดพิเศษ  — admin เพิ่มเสาร์ที่ให้พนักงานมาทำงาน
    2. วันธรรมดาปิดพิเศษ — admin เพิ่ม จ-ศ ที่ปิดร้าน (อบรม/หยุดยาว ฯลฯ)
-   3. อาทิตย์ปิดพิเศษ — admin เพิ่มอาทิตย์ที่ปิดร้าน (ลาไม่นับ · ไม่หัก × 1.5)
+   3. อาทิตย์ปิดพิเศษ — admin เพิ่มอาทิตย์ที่ปิดร้าน (ลาไม่นับ · ไม่ถูกหัก)
    เพิ่ม → save ทันที (real-time sync) · ลบ → save ทันที                  */
 
 import {
@@ -16,6 +16,7 @@ import {
   X as IconX,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { BUSINESS_RULES } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import {
   currentYearMonth,
@@ -691,7 +692,8 @@ export default function StoreCalendarPanel({
           <div className="flex-1">
             <div className="font-bold text-maroon text-sm">อาทิตย์ปิดพิเศษ</div>
             <div className="text-xs text-txt-soft mt-0.5">
-              อาทิตย์ที่ปิดร้าน — ลาวันนี้ไม่นับ · ไม่หัก × 1.5
+              อาทิตย์ที่ปิดร้าน — ลาวันนี้ไม่นับ · ไม่หัก{" "}
+              {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท
             </div>
           </div>
           {adding !== "sun" && (
@@ -746,7 +748,7 @@ export default function StoreCalendarPanel({
                 <IconX size={14} strokeWidth={2.2} />
               </button>
             </div>
-            {/* warning ถ้ามีใบลาในอาทิตย์ที่เลือก → จะไม่ถูกหัก × 1.5 อีก */}
+            {/* warning ถ้ามีใบลาในอาทิตย์ที่เลือก → จะไม่ถูกหักอีก */}
             {sunPick &&
               (() => {
                 const leaves = leavesOnDate(sunPick, allLeaves);
@@ -760,8 +762,9 @@ export default function StoreCalendarPanel({
                     <div>
                       <b>มีใบลา {names.length} คนวันนี้</b> ({names.join(", ")})
                       <br />
-                      หลังปิดอาทิตย์นี้ ใบลายังอยู่ในระบบ แต่ <b>ไม่หัก × 1.5</b> (ร้านปิด —
-                      ลาไม่กระทบ)
+                      หลังปิดอาทิตย์นี้ ใบลายังอยู่ในระบบ แต่{" "}
+                      <b>ไม่หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท</b>{" "}
+                      (ร้านปิด — ลาไม่กระทบ)
                     </div>
                   </div>
                 );
@@ -772,7 +775,8 @@ export default function StoreCalendarPanel({
         <div className="px-3.5 py-2.5">
           {sun.upcoming.length === 0 && sun.past.length === 0 && (
             <div className="text-sm text-txt-soft text-center py-3">
-              ไม่มีรายการเดือนนี้ — ปกติอาทิตย์เปิด (× 1.5)
+              ไม่มีรายการเดือนนี้ — ปกติอาทิตย์เปิด (ลาแล้วหัก{" "}
+              {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท)
             </div>
           )}
           {sun.upcoming.map((d) => (

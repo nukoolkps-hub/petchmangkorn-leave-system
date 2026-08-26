@@ -1,6 +1,6 @@
 /* ─── Store calendar helper — เปิด/ปิดร้านรายวัน ─────────────────────
    Default:
-   - อาทิตย์ = เปิด (× 1.5 ตามกฎเดิม) · ปิดได้ถ้า admin mark (extraClosedSundays)
+   - อาทิตย์ = เปิด (ลาแล้วถูกหักทันที) · ปิดได้ถ้า admin mark (extraClosedSundays)
    - เสาร์ = ปิด
    - จ-ศ = เปิด
    Override ผ่าน /config/storeCalendar (admin-managed)
@@ -22,7 +22,7 @@ export function isStoreClosed(
     return !(calendar?.extraOpenSaturdays || []).includes(ymd);
   }
   if (dow === 0) {
-    // อาทิตย์: เปิด default (กฎเดิม × 1.5) · ปิดได้ถ้า admin mark
+    // อาทิตย์: เปิด default (ลาแล้วถูกหักทันที) · ปิดได้ถ้า admin mark
     return (calendar?.extraClosedSundays || []).includes(ymd);
   }
   // จันทร์-ศุกร์: เปิด default · ปิดได้ถ้า admin mark
@@ -30,7 +30,7 @@ export function isStoreClosed(
 }
 
 /** วันที่ ymd = "วันทำงานที่ลานับโควต้า" หรือไม่
- *  = ร้านเปิด AND ไม่ใช่อาทิตย์ (อาทิตย์มีกฎ × 1.5 แยก)                  */
+ *  = ร้านเปิด AND ไม่ใช่อาทิตย์ (อาทิตย์มีกฎหักแยก)                      */
 export function isQuotaCountableDay(
   ymd: string,
   calendar?: StoreCalendar | null,
@@ -41,7 +41,7 @@ export function isQuotaCountableDay(
   return !isStoreClosed(ymd, calendar);
 }
 
-/** วันที่ ymd = วันอาทิตย์ — helper สั้นๆ (กฎ × 1.5 หักทุกครั้ง) */
+/** วันที่ ymd = วันอาทิตย์ — helper สั้นๆ (ลาแล้วหักทุกครั้ง) */
 export function isSunday(ymd: string): boolean {
   const [y, m, d] = ymd.split("-").map(Number);
   return new Date(y, m - 1, d).getDay() === 0;

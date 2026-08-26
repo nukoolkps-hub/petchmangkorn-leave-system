@@ -32,7 +32,7 @@ import LeaveTypeCard from "./LeaveTypeCard";
 /** ลาป่วยล่วงหน้าได้สูงสุด 2 อาทิตย์ */
 const SICK_LEAVE_MAX_AHEAD_DAYS = 14;
 
-/** ใบลานี้คร่อมวันอาทิตย์ที่ "ร้านเปิด" ไหม — อาทิตย์เปิดจะถูกหัก × 1.5
+/** ใบลานี้คร่อมวันอาทิตย์ที่ "ร้านเปิด" ไหม — อาทิตย์เปิดถูกหักทันที
  *  (อาทิตย์ปิดพิเศษใน extraClosedSundays ไม่นับ เพราะร้านปิด ลาไม่กระทบ) */
 function hasDeductibleSunday(
   start: string,

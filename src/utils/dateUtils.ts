@@ -76,7 +76,7 @@ export function countWorkdays(
       // เสาร์: ปิด default · เปิดได้ถ้า admin mark
       isClosed = !(calendar?.extraOpenSaturdays || []).includes(ymd);
     } else if (dow === 0) {
-      // อาทิตย์: เปิด default (× 1.5 ลาก็นับ) · ปิดได้ถ้า admin mark
+      // อาทิตย์: เปิด default (ลาก็นับ · หักแยก) · ปิดได้ถ้า admin mark
       isClosed = (calendar?.extraClosedSundays || []).includes(ymd);
     } else {
       // จ-ศ: เปิด default · ปิดได้ถ้า admin mark
