@@ -204,7 +204,7 @@ export default function HomeTab({
 
       {/* leave type mini stats — นับ "วันลา" จากปฏิทิน แยกตามประเภท ·
           ตัดวันร้านปิด (เสาร์ปิด/วันปิดพิเศษ) ออก เพราะลาวันร้านปิด
-          ไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ · ไม่เกี่ยวกับ logic เงินเดือน */}
+          ไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ · ไม่เกี่ยวกับยอดหัก */}
       <div className="grid grid-cols-2 gap-2.5 mb-1.5">
         {LEAVE_TYPES.map((lt) => {
           const usedType = profile

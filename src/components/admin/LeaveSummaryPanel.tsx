@@ -94,7 +94,7 @@ interface LeaveSummaryPanelProps {
   employeeDirectory: Employee[];
   storeCalendar: StoreCalendar;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
-   *  อื่น (LeaveListPanel · SalaryAdminEdit · PayrollSummaryPanel) */
+   *  อื่น (LeaveListPanel) */
   selectedMonth: string;
   onSelectMonth: (month: string) => void;
 }

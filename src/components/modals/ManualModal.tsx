@@ -1,6 +1,5 @@
 import {
   AlertTriangle as IconAlertTriangle,
-  Banknote as IconBanknote,
   Book as IconBook,
   CalendarDays as IconCalendar,
   CalendarClock as IconCalendarClock,
@@ -235,41 +234,9 @@ export default function ManualModal({ onClose }) {
               · กล่องยืนยันจะโชว์รายชื่อ + ช่วงวันของทุกใบลาก่อน — ใบที่ครอบหลายวัน
               จะถูกลบทั้งใบ (ไม่ใช่แค่วันเดียว)
               <br />· เหตุผล: กันใบลาค้างอยู่ในวันที่เปลี่ยนสถานะแล้ว — ทำให้ยอดวันลา
-              ในสรุปกับสลิปตรงกันเสมอ
+              กับยอดหักตรงกับปฏิทินร้านเสมอ
             </p>
           </Box>
-        </Section>
-
-        {/* แยก section: เสาร์เปิดพิเศษมี 2 แบบ */}
-        <Section
-          title={
-            <span className="inline-flex items-center gap-1.5">
-              <IconBanknote size={16} strokeWidth={2.4} />
-              เสาร์เปิดพิเศษ — มี 2 แบบ
-            </span>
-          }
-          color={COLORS.green}
-        >
-          <Card title="แบบที่ 1: เปิดเฉยๆ" color={COLORS.text}>
-            <p>ADMIN กำหนดเฉพาะ "เปิด" — มาทำงานนับชั่วโมงปกติ · ไม่มีเงินเพิ่มในสลิป</p>
-          </Card>
-          <Card
-            title={
-              <span className="inline-flex items-center gap-1.5">
-                <IconBanknote size={14} strokeWidth={2.4} />
-                แบบที่ 2: เปิด + จ่ายเพิ่ม
-              </span>
-            }
-            color={COLORS.text}
-          >
-            <p>
-              ADMIN ติ๊ก <b>"จ่ายเพิ่ม"</b> ในเสาร์นั้น → ถ้ามาทำงาน (ไม่ลา) ได้เงิน{" "}
-              <b>+1 วัน (เรทต่อวัน)</b> เข้าสลิป ในบรรทัด <b>"เสาร์เปิดพิเศษ"</b>
-            </p>
-            <p className="mt-1.5 text-xs text-txt-soft">
-              ลาวันนั้น → ไม่ได้เงินเพิ่ม + วันลานับเข้าโควต้าเหมือนวันธรรมดา
-            </p>
-          </Card>
         </Section>
 
         <Section
@@ -317,10 +284,6 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               <b>วันเขียว + "เปิด"</b> = เสาร์เปิดพิเศษ (มาทำงานเหมือนวันธรรมดา)
-            </li>
-            <li>
-              <b>"+1 วัน"</b> = เสาร์เปิดพิเศษแบบจ่ายเพิ่ม — มาทำงาน (ไม่ลา) ได้เงินเพิ่ม 1
-              วัน
             </li>
           </ul>
           <p className="mt-1.5 text-xs text-txt-soft">

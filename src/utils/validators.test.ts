@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  validateLineUserId,
-  validateNonNegativeNumber,
-  validatePositiveNumber,
-  validateRequired,
-} from "./validators";
+import { validateLineUserId, validateRequired } from "./validators";
 
 const VALID_LINE_ID = `U${"0123456789abcdef".repeat(2)}`; // U + 32 hex chars
 
@@ -24,44 +19,6 @@ describe("validateLineUserId", () => {
     expect(validateLineUserId("U123")).not.toBeNull(); // too short
     expect(validateLineUserId(`X${"0".repeat(32)}`)).not.toBeNull(); // wrong prefix
     expect(validateLineUserId(`U${"g".repeat(32)}`)).not.toBeNull(); // non-hex
-  });
-});
-
-describe("validateNonNegativeNumber", () => {
-  it("treats empty/null/undefined as valid (optional)", () => {
-    expect(validateNonNegativeNumber("")).toBeNull();
-    expect(validateNonNegativeNumber(null)).toBeNull();
-    expect(validateNonNegativeNumber(undefined)).toBeNull();
-  });
-
-  it("accepts zero and positive numbers", () => {
-    expect(validateNonNegativeNumber("0")).toBeNull();
-    expect(validateNonNegativeNumber("123.45")).toBeNull();
-  });
-
-  it("rejects negatives and non-numbers", () => {
-    expect(validateNonNegativeNumber("-1")).not.toBeNull();
-    expect(validateNonNegativeNumber("abc")).not.toBeNull();
-  });
-
-  it("includes the field name in the error message", () => {
-    expect(validateNonNegativeNumber("-1", "เงินเดือน")).toContain("เงินเดือน");
-  });
-});
-
-describe("validatePositiveNumber", () => {
-  it("treats empty as valid", () => {
-    expect(validatePositiveNumber("")).toBeNull();
-  });
-
-  it("rejects zero (must be > 0)", () => {
-    expect(validatePositiveNumber("0")).not.toBeNull();
-  });
-
-  it("accepts positive and rejects negative/non-number", () => {
-    expect(validatePositiveNumber("0.01")).toBeNull();
-    expect(validatePositiveNumber("-5")).not.toBeNull();
-    expect(validatePositiveNumber("x")).not.toBeNull();
   });
 });
 

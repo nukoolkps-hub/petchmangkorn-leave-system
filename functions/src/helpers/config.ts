@@ -49,8 +49,7 @@ export async function getLineConfig(): Promise<LineConfig> {
    อ่าน config/notifications doc — default semantic: missing field /
    !== false → enabled. เฉพาะ === false เท่านั้นที่ skip
 
-   Cache 60 วินาที — processAdvanceNotifications รันทุกนาที → ลด
-   Firestore read จาก 1440/วัน → ~24/วัน per warm instance              */
+   Cache 60 วินาที — กัน Firestore read ซ้ำเมื่อ scheduler ยิงถี่          */
 const NOTIFICATION_CACHE_TTL_MS = 60_000;
 let notificationCache: {
 	settings: Record<string, unknown> | undefined;
@@ -58,11 +57,7 @@ let notificationCache: {
 } = { settings: undefined, expiresAt: 0 };
 
 export async function isNotificationEnabled(
-	field:
-		| "dailySummaryEnabled"
-		| "advanceRequestEnabled"
-		| "advanceApprovalEnabled"
-		| "loanCreatedEnabled",
+	field: "dailySummaryEnabled",
 ): Promise<boolean> {
 	const now = Date.now();
 	if (now > notificationCache.expiresAt) {

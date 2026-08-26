@@ -40,14 +40,6 @@ export interface LeaveEntry {
   createdByAdmin?: boolean;
 }
 
-export interface LeaveType {
-  id: LeaveKind;
-  label: string;
-  icon: string;
-  color: string;
-  colorLt: string;
-}
-
 /** ปฏิทินวันเปิด-ปิดร้าน (admin-managed · doc เดียว: config/storeCalendar)
  *  Default: อาทิตย์ = เปิด · เสาร์ = ปิด · จ-ศ = เปิด                    */
 export interface StoreCalendar {
@@ -57,17 +49,6 @@ export interface StoreCalendar {
   extraClosedWeekdays: string[];
   /** อาทิตย์ที่ admin ปิดพิเศษ — ลาวันนั้นไม่นับ */
   extraClosedSundays?: string[];
-}
-
-/* ─── Config ที่ component อ่านจาก constants ──────────────────── */
-
-export interface BusinessRules {
-  WEEKDAY_LEAVE_QUOTA: number;
-  MAX_LEAVE_DAYS_PER_REQUEST: number;
-}
-
-export interface Validation {
-  LINE_USER_ID_PATTERN: RegExp;
 }
 
 /* ─── useAppData return type ──────────────────────────────────── */

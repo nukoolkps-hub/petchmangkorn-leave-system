@@ -5,9 +5,6 @@ import {
   Stethoscope as IconStethoscope,
 } from "lucide-react";
 
-export const FONT_LINK =
-  "https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap";
-
 export const COLORS = {
   maroon: "#7B1C1C",
   maroonDark: "#5C1212",

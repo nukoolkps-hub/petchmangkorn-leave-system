@@ -5,7 +5,7 @@
    - จ-ศ = เปิด
    Override ผ่าน /config/storeCalendar (admin-managed)
 
-   ⚠️ ต้องเหมือน functions/src/duty/dutyUtils.ts เป๊ะ (client/server ต้อง
+   ⚠️ ต้องเหมือน functions/src/dailySummary/dateUtils.ts เป๊ะ (client/server ต้อง
    ตัดสินใจตรงกันว่าวันไหนปิด — มี sync check ใน CI)                    */
 
 import type { StoreCalendar } from "../types";

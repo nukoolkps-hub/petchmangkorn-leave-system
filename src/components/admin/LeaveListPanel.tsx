@@ -34,7 +34,7 @@ interface LeaveListPanelProps {
     leave: Omit<LeaveEntry, "id">,
   ) => Promise<string | number | undefined>;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel ผ่าน prop · admin
-   *  ที่เลือก ส.ค. ในแท็บค่าคอม → ไปแท็บนี้ ยังเป็น ส.ค. */
+   *  ที่เลือก ส.ค. ในแท็บสรุปลา → ไปแท็บนี้ ยังเป็น ส.ค. */
   selectedMonth: string;
   onSelectMonth: (month: string) => void;
   showToast?: (msg: string) => void;

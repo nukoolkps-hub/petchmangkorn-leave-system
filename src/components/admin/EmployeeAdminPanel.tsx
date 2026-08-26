@@ -193,7 +193,7 @@ export default function EmployeeAdminPanel({
           <div className="text-sm text-txt-mid text-center mb-5 leading-[1.8]">
             <b>{confirmDeleteEmp.name}</b>
             <br />
-            ข้อมูลทั้งหมดจะถูกลบ (ใบลา · เบิกล่วงหน้า · เงินกู้ · เงินเดือน ทุกเดือน)
+            ใบลาทั้งหมดของคนนี้จะถูกลบไปด้วย
             <br />
             <span className="text-sm text-red">การลบจะไม่สามารถกู้คืนได้</span>
           </div>

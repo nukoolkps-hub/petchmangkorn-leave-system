@@ -3,7 +3,7 @@
    - selected = เดือนที่กำลังเปิดอยู่
    - แตะ label เปิด popover เลือกเดือน/ปีตรงๆ (กระโดดได้ไม่ต้องกดลูกศรย้อน)
    - ปุ่ม disable ที่ปลายช่วง · popover ใช้ Buddhist year + ตัวย่อเดือน
-   ใช้ใน: SalaryView (สลิป) · LeaveListPanel (ฟิลเตอร์ใบลา)                 */
+   ใช้ใน: LeaveSummaryPanel · LeaveListPanel · StoreCalendarPanel          */
 
 import {
   ChevronLeft as IconChevronLeft,
