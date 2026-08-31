@@ -7,6 +7,7 @@ import {
   CalendarRange as IconCalendarRange,
   ChevronRight as IconChevronRight,
   ClipboardList as IconClipboardList,
+  Gift as IconGift,
   ShieldCheck as IconShieldCheck,
   Sun as IconSun,
   Trash2 as IconTrash,
@@ -18,6 +19,7 @@ import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
   getRequestImpact,
+  hasPerfectAttendance,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
 import { isStoreClosed, isSunday } from "../../utils/storeCalendar";
@@ -204,6 +206,15 @@ export default function RequestTab({
     storeCalendar,
   );
 
+  /* เดือนนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่
+     ต้องบอกให้ชัดว่า "โควต้าที่เหลือ" ไม่ได้แปลว่าลาฟรี — วันแรกไม่ถูกหักเงิน
+     ก็จริง แต่ทำให้เสียโบนัสทั้งก้อน ซึ่งแพงกว่าวันถัด ๆ ไปเสียอีก */
+  const bonusStillAvailable = hasPerfectAttendance(
+    monthLeavesForQuota,
+    storeCalendar,
+    currentMonth,
+  );
+
   return (
     <div>
       {/* quota status in form */}
@@ -225,6 +236,22 @@ export default function RequestTab({
               ? `หมดโควต้าแล้ว — วันธรรมดาหักวันละ ${BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท`
               : `โควต้าเดือนนี้เหลือ ${rem} วัน`}
           </div>
+          {bonusStillAvailable && (
+            <div className="text-sm font-semibold text-amber mt-0.5 inline-flex items-start gap-1.5">
+              <IconGift
+                size={14}
+                strokeWidth={2.4}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                ยังไม่ลาเดือนนี้ — ลาแม้อยู่ในโควต้าก็เสียโบนัส{" "}
+                {BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS.toLocaleString(
+                  "th-TH",
+                )}{" "}
+                บาท
+              </span>
+            </div>
+          )}
           <div className="text-sm text-txt-soft mt-0.5">
             ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
           </div>
