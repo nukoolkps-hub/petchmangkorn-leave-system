@@ -7,6 +7,7 @@
 
 import {
   CalendarRange as IconCalendarRange,
+  Gift as IconGift,
   Sun as IconSun,
   Wallet as IconWallet,
 } from "lucide-react";
@@ -73,6 +74,18 @@ export default function DeductionSummary({
               วันอาทิตย์ {sundayDays} วัน × {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}
             </span>
             <span className="font-bold">{formatBaht(sundayAmount)}</span>
+          </div>
+        )}
+        {/* ต้องมีบรรทัดนี้เสมอเมื่อ bonusLost > 0 — ไม่งั้นเคสที่พบบ่อยที่สุด
+            (ลาวันธรรมดาวันแรกของรอบ: ไม่ถูกหักเลย แต่เสียโบนัสเต็มก้อน)
+            จะได้กล่องแดงหัวเรื่อง ฿1,000 ที่ไม่มีรายการอะไรอยู่ข้างในเลย */}
+        {bonusLost > 0 && (
+          <div className="flex items-center justify-between text-xs text-txt-mid">
+            <span className="inline-flex items-center gap-1.5">
+              <IconGift size={12} strokeWidth={2.4} />
+              โบนัสที่เสียไป
+            </span>
+            <span className="font-bold">{formatBaht(bonusLost)}</span>
           </div>
         )}
       </div>

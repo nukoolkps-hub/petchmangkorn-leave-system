@@ -60,7 +60,8 @@ main.tsx → AuthProvider → AuthGate → App.tsx (LeaveApp)
 |---|---|
 | calendar-view | `TeamCalendar` (ใช้ร่วมกับหน้าแรกของพนักงาน) |
 | store-calendar | `StoreCalendarPanel` |
-| summary | `LeaveSummaryPanel` |
+| summary (สรุปลา) | `LeaveSummaryPanel` |
+| period-settlement (สรุปรอบจ่าย) | `PeriodSettlementPanel` → `PayrollPeriodBar` + `PeriodSettlementTable` |
 | leaves | `LeaveListPanel` |
 | roles (พนักงาน) | `EmployeeAdminPanel` → `EmployeeEditModal` |
 | linebot-notifications | `LineBotNotificationsPanel` |
@@ -68,8 +69,11 @@ main.tsx → AuthProvider → AuthGate → App.tsx (LeaveApp)
 
 **กฎ:** component ไม่ควรเกิน ~300-400 บรรทัด — ถ้าโตเกินให้แยก
 
-`adminMonth` (เดือนที่กำลังดู) ถูก lift ไว้ที่ `AdminPanel` แล้วส่งเป็น props
-ให้ "สรุปลา" กับ "เพิ่ม-ลบการลา" ใช้ร่วมกัน — เลือกเดือนที่หนึ่ง อีกหน้าตามด้วย
+`adminMonth` (รอบที่กำลังดู) ถูก lift ไว้ที่ `AdminPanel` แล้วส่งเป็น props ให้
+"สรุปลา" · "สรุปรอบจ่าย" · "เพิ่ม-ลบการลา" ใช้ร่วมกัน — เลือกรอบที่หนึ่ง อีกหน้าตามด้วย
+
+**สรุปลา ≠ สรุปรอบจ่าย** — "สรุปลา" ตอบว่า *ใครลาไปกี่วัน* (รายคน + รายปี) ·
+"สรุปรอบจ่าย" ตอบว่า *รอบนี้จ่ายเท่าไหร่* (ปิดรอบ · ล็อกยอด · คัดลอกสรุป)
 
 ### Data Flow
 
@@ -107,6 +111,8 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `src/components/admin/AdminPanel.tsx` | Admin router — render section components |
 | `src/components/admin/EmployeeAdminPanel.tsx` + `EmployeeEditModal.tsx` | จัดการพนักงาน: list (ลากเรียง) + ฟอร์มแก้ไข |
 | `src/components/admin/LeaveSummaryPanel.tsx` / `LeaveListPanel.tsx` | สรุปลา / รายการลา |
+| `src/components/admin/PeriodSettlementPanel.tsx` | section "สรุปรอบจ่าย" — แถบรอบ + ตารางสรุปเงิน |
+| `src/hooks/usePeriodLock.ts` | ล็อกยอดรอบที่ถึงเวลา — เรียกที่ `AdminPanel` |
 | `src/components/admin/PayrollPeriodBar.tsx` | แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ |
 | `src/components/admin/PeriodSettlementTable.tsx` | ตารางสรุปเงินทั้งรอบ (ทุกคน) + ปุ่มคัดลอก |
 | `src/utils/payrollPeriod.ts` | **Single source** ของขอบเขตรอบจ่าย (มี unit test) |
@@ -206,9 +212,9 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 แก้อัตราหรือโควต้า → แก้ที่ `BUSINESS_RULES` ที่เดียว แล้วรัน `npm test`
 (เทสต์ล็อก "จำนวนวันที่ถูกหัก" ไว้ ไม่ได้ hardcode ตัวเลขบาท)
 
-**UI ที่โชว์ยอดหัก:** การ์ดโควต้าหน้าแรก (`HomeTab`) · ฟอร์มยื่นลา
-(`RequestTab` + `SubmitLeaveConfirmModal`) · สรุปลาฝั่ง admin
-(`LeaveSummaryPanel` — รายคน + ยอดรวมทั้งเดือน)
+**UI ที่โชว์ยอดหัก:** การ์ดสรุปหน้าแรก (`HomeTab`) · ฟอร์มยื่นลา
+(`RequestTab` + `SubmitLeaveConfirmModal`) · `LeaveSummaryPanel` (รายคน) ·
+`PeriodSettlementPanel` (ยอดรวมทั้งรอบ ทุกคน)
 
 **ลาวันอาทิตย์ต้องติ๊กยืนยัน** — `SubmitLeaveConfirmModal` disable ปุ่มส่ง
 จนกว่าจะติ๊กรับทราบว่าจะถูกหัก (กันกดผ่านโดยไม่ทันอ่าน)
@@ -228,6 +234,10 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
   - `snapshots: { "2026-08": { start, end, closedAt, closedOn, lockedFrom,
     pending, rows, totals } }` — **ยอดที่ล็อกไว้** (`pending: true` = ฉบับร่าง
     ยังไม่ล็อก)
+
+> ⚠️ **ทุกที่ที่นับ "วันลา" ต้องส่ง `period` เข้าไป clamp เสมอ**
+> (`getCountedLeaveDays` / `getLeaveDeduction`) — ใบลาคร่อมรอบจะถูกนับเต็มใบ
+> ในทั้งสองรอบถ้าลืม · ห้ามใช้ `lv.days` ตรง ๆ เพราะนั่นคือความยาวเต็มใบ
 - **วันลาหลังวันตัดยกไปรอบถัดไปอัตโนมัติ** — ไม่ต้องทำอะไรเพิ่ม
 - โควต้า/ค่าหัก/โบนัส ผูกกับ **รอบ** ไม่ใช่เดือนปฏิทิน
 - เปิดรอบกลับได้ถ้ากดผิดวัน (ปุ่ม "เปิดรอบกลับ")
@@ -237,6 +247,9 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 - `getPeriodRange(yearMonth, cutoffs)` → `{ start, end }` ของรอบนั้น
 - `periodKeyForDate(ymd, cutoffs)` → วันนี้ตกรอบไหน (คืน key `YYYY-MM`)
 - `periodKeysInRange(start, end, cutoffs)` → ใบลาคร่อมกี่รอบ
+- `periodKeysForLeaves(leaves, cutoffs, alwaysInclude)` → ลิสต์รอบให้เลือกดู
+  **ห้ามใช้ `lv.start.slice(0,7)` ทำลิสต์เอง** — ใบลาหลังวันตัดตกรอบถัดไป
+  รอบที่กำลังสะสมจะหายจากลิสต์
 
 ฟังก์ชันใน `leaveUtils` รับ arg สุดท้ายเป็น `PeriodArg` = `"YYYY-MM"`
 (เดือนปฏิทินเต็มเดือน) **หรือ** `LeavePeriod` (ช่วงวันของรอบ) — call site
@@ -254,8 +267,10 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
                    →  28 ส.ค. 00:00 เป็นต้นไป: ล็อกยอดตามสิ้นวันที่ 27
 ```
 
-**ใครเป็นคนล็อก:** ฝั่ง client (`LeaveSummaryPanel` useEffect →
-`finalizePayrollPeriod`) ตอน admin เปิดหน้าสรุปครั้งแรกหลังพ้นเที่ยงคืน ·
+**ใครเป็นคนล็อก:** ฝั่ง client — hook `usePeriodLock` ที่ **`AdminPanel`**
+(ไม่ใช่ใน section ใด section หนึ่ง เพราะต้องทำงานทุกครั้งที่ admin เปิดแอป
+ไม่ใช่เฉพาะตอนบังเอิญเปิดหน้าสรุปรอบจ่าย) →
+`finalizePayrollPeriod` ตอนเปิดแอปครั้งแรกหลังพ้นเวลาล็อก ·
 ไม่ได้ทำที่ Cloud Function เพราะ `functions/` มี `rootDir: "src"` import
 `src/utils/leaveUtils` ข้ามมาไม่ได้ → ต้อง copy สูตรเงินไปอีกชุด ซึ่งจะ drift
 
@@ -271,6 +286,8 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
   `PeriodSnapshot` · **ต้องส่ง period ที่ `end` = วันตัดที่เลือก** ไม่ใช่ขอบ
   ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด · `lockedFrom` = `closedOn` + 1 วัน
 - `isSnapshotLocked(snapshot)` → ล็อกแล้วหรือยัง (ยังไม่ล็อก = ต้องโชว์ยอดสด)
+  · `lockedFrom` = วันถัดจาก **วันที่มาทีหลัง** ระหว่าง `closedOn` กับ
+  `period.end` — admin กดปิดรอบล่วงหน้าได้ ต้องไม่ล็อกก่อนรอบจบจริง
 - `shouldFinalizeSnapshot(snapshot, todayYmd)` → ถึงเวลาล็อกหรือยัง
 - `diffSettlement(snapshot, live)` → คนที่ยอดสด "ตอนนี้" ไม่ตรงกับที่ล็อกไว้
   (มีคนแก้ย้อนหลัง) → UI ขึ้นแถบแดงเตือน + ปุ่ม "ยึดยอดใหม่"

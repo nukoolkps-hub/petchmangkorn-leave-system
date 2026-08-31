@@ -288,15 +288,14 @@ export default function ManualModal({ onClose }) {
           title={
             <span className="inline-flex items-center gap-1.5">
               <IconCalendarRange size={16} strokeWidth={2.4} />
-              ตัวเลขวันลาบนหน้าแรก — นับคนละช่วง
+              ตัวเลขวันลาบนหน้าแรก
             </span>
           }
           color={COLORS.maroon}
         >
           <p>
-            หน้าแรกโชว์จำนวนวันลา 2 ที่ · ทั้งคู่ตัดวันร้านปิดออกเหมือนกัน แต่{" "}
-            <b>นับคนละช่วงเวลา</b> — ถ้าเลขไม่เท่ากัน{" "}
-            <b className="text-green">ไม่ใช่ error</b>
+            หน้าแรกโชว์จำนวนวันลา 2 ที่ · <b>นับตามรอบเดียวกันทั้งคู่</b> ตัดวันร้านปิด
+            ออกเหมือนกัน — ต่างกันแค่วิธีแบ่งกลุ่ม
           </p>
           <Card
             title={
@@ -309,7 +308,7 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                นับตาม <b>รอบจ่าย</b> · แยกป้ายวันธรรมดากับวันอาทิตย์ เพราะคนละอัตรา ·
+                แยกป้าย <b>วันธรรมดา</b> กับ <b>วันอาทิตย์</b> เพราะคนละอัตรา ·
                 บอกด้วยว่าเหลือโควต้าฟรีอีกกี่วัน
               </li>
               <li>โชว์ยอดสุทธิของรอบ (ค่าหัก + โบนัส) เป็นตัวเลขใหญ่มุมขวา</li>
@@ -319,14 +318,14 @@ export default function ManualModal({ onClose }) {
             title={
               <span className="inline-flex items-center gap-1.5">
                 <IconCalendar size={14} strokeWidth={2.4} />
-                ชิป "ลากิจ / ลาป่วย เดือนนี้ X วัน"
+                ชิป "ลากิจ / ลาป่วย"
               </span>
             }
             color={COLORS.text}
           >
             <ul>
               <li>
-                นับตาม <b>เดือนปฏิทิน</b> (1 ถึงสิ้นเดือน) แยกตามประเภทการลา
+                แยกตาม <b>ประเภทการลา</b> แทน · รวมกันแล้วต้องเท่ากับการ์ดด้านบน
               </li>
               <li>
                 เป็นแค่ตัวบอกจำนวนวัน · <b>ไม่เกี่ยวกับการคิดเงิน</b>
@@ -334,9 +333,8 @@ export default function ManualModal({ onClose }) {
             </ul>
           </Card>
           <p className="mt-1.5 text-xs text-txt-soft">
-            <b>ตัวอย่าง:</b> ปิดรอบ ส.ค. วันที่ 27 แล้วลาวันที่ 29 ส.ค. → ชิปนับเข้า{" "}
-            <b>เดือน ส.ค.</b> แต่การ์ดนับเข้า <b>รอบ ก.ย.</b> (ถูกต้องทั้งคู่) ·
-            ถ้ารอบตรงกับเดือนปฏิทินพอดี ตัวเลขจะเท่ากัน
+            <b>ตัวอย่าง:</b> รอบนี้ลากิจวันธรรมดา 1 + ลาป่วยวันอาทิตย์ 1 → การ์ดโชว์
+            "วันธรรมดา 1 · วันอาทิตย์ 1" · ชิปโชว์ "ลากิจ 1 · ลาป่วย 1" (รวม 2 เท่ากัน)
           </p>
           <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
             <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">

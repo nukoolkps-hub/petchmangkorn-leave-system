@@ -176,7 +176,9 @@ describe("lock timing", () => {
   const settlement = buildSettlement([emp("a", "เอ")], [], null, JUNE);
 
   it("ตั้ง lockedFrom เป็นวันถัดจากวันที่กดปิดรอบ", () => {
-    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+    // รอบจบวันที่ 27 · กดปิดวันที่ 27 → ล็อกวันที่ 28
+    const closed = { start: "2026-06-01", end: "2026-06-27" };
+    const draft = makeSnapshot("2026-06", closed, settlement, {
       closedOn: "2026-06-27",
       pending: true,
     });
@@ -187,6 +189,29 @@ describe("lock timing", () => {
 
   it("ข้ามเดือนได้ถูก — ปิดรอบวันสุดท้ายของเดือน", () => {
     const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-30",
+      pending: true,
+    });
+    expect(draft.lockedFrom).toBe("2026-07-01");
+  });
+
+  it("กดปิดรอบล่วงหน้า → รอจนพ้นวันสุดท้ายของรอบ ไม่ใช่วันที่กด", () => {
+    // กดวันที่ 20 แต่ตัดรอบวันที่ 30 → วันลา 21-30 ยังอยู่ในรอบนี้
+    // ถ้าล็อกวันที่ 21 ยอดพวกนั้นจะตกหาย
+    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-20",
+      pending: true,
+    });
+    expect(draft.lockedFrom).toBe("2026-07-01");
+    expect(shouldFinalizeSnapshot(draft, "2026-06-21")).toBe(false);
+    expect(shouldFinalizeSnapshot(draft, "2026-06-30")).toBe(false);
+    expect(shouldFinalizeSnapshot(draft, "2026-07-01")).toBe(true);
+  });
+
+  it("กดปิดรอบย้อนหลัง → รอจนพ้นวันที่กด", () => {
+    // รอบจบไปแล้ววันที่ 27 แต่เพิ่งมากดวันที่ 30 → ยังต้องแก้ได้ทั้งวันที่ 30
+    const closed = { start: "2026-06-01", end: "2026-06-27" };
+    const draft = makeSnapshot("2026-06", closed, settlement, {
       closedOn: "2026-06-30",
       pending: true,
     });
@@ -204,7 +229,8 @@ describe("lock timing", () => {
   });
 
   it("ยังไม่ถึงเวลาล็อกในวันที่กดปิดรอบ", () => {
-    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+    const closed = { start: "2026-06-01", end: "2026-06-27" };
+    const draft = makeSnapshot("2026-06", closed, settlement, {
       closedOn: "2026-06-27",
       pending: true,
     });

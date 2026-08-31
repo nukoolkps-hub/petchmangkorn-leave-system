@@ -5,33 +5,44 @@ import {
   Cross as IconCross,
   Sun as IconSun,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
-import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
-import { getLeaveDeduction, leaveOverlapsMonth } from "../../utils/leaveUtils";
+import { fmtDateWithWeekday, todayYmd } from "../../utils/dateUtils";
+import {
+  getCountedLeaveDays,
+  getLeaveDeduction,
+  leaveOverlapsMonth,
+} from "../../utils/leaveUtils";
 import {
   getPeriodRange,
   isCalendarMonth,
-  isPeriodClosed,
   type LeavePeriod,
   type PeriodCutoffs,
+  periodKeyForDate,
+  periodKeysForLeaves,
 } from "../../utils/payrollPeriod";
-import {
-  buildSettlement,
-  diffSettlement,
-  isSnapshotLocked,
-  makeSnapshot,
-  type PeriodSnapshot,
-  type PeriodSnapshots,
-  shouldFinalizeSnapshot,
-} from "../../utils/periodSettlement";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
 import ThemedSelect from "../shared/ThemedSelect";
-import PayrollPeriodBar from "./PayrollPeriodBar";
-import PeriodSettlementTable from "./PeriodSettlementTable";
+
+/** จำนวนวันลาของประเภทหนึ่ง ภายในช่วงที่กำหนด
+ *  ต้อง clamp ด้วย period เหมือนตัวเลขอื่นในการ์ด — ใช้ `lv.days` ตรง ๆ
+ *  ไม่ได้ เพราะนั่นคือความยาวเต็มใบ ใบลาคร่อมรอบจะถูกนับเต็มในทั้งสองรอบ */
+function typeDaysInPeriod(
+  leaves: LeaveEntry[],
+  type: LeaveEntry["type"],
+  calendar: StoreCalendar,
+  period: LeavePeriod,
+): number {
+  const { weekdays, sundays } = getCountedLeaveDays(
+    leaves.filter((lv) => lv.type === type),
+    calendar,
+    period,
+  );
+  return weekdays + sundays;
+}
 
 /* ─── แสดง breakdown วันธรรมดา/อาทิตย์ บรรทัดเดียว ใต้ยอดรวมวันลา ──── */
 function LeaveDayBreakdown({
@@ -63,72 +74,14 @@ function LeaveDayBreakdown({
   );
 }
 
-// นับวันธรรมดา/อาทิตย์ในช่วงวันลา — เคารพ storeCalendar เดียวกับ countWorkdays
-// (เสาร์เปิดพิเศษ → นับเป็น weekday · จ-ศ ปิดพิเศษ → ข้าม · อาทิตย์ปิดพิเศษ → ข้าม)
-// ไม่งั้น breakdown จะไม่ตรงกับ lv.days (badge "ลา N วัน") ที่นับด้วย countWorkdays
-function countByDayType(
-  start: string,
-  end: string,
-  calendar?: StoreCalendar | null,
-) {
-  let weekdays = 0;
-  let sundays = 0;
-  const s = new Date(`${start}T00:00:00`);
-  const e = new Date(`${end}T00:00:00`);
-  const c = new Date(s);
-  const extraOpenSat = new Set(calendar?.extraOpenSaturdays || []);
-  const extraClosedWd = new Set(calendar?.extraClosedWeekdays || []);
-  const extraClosedSun = new Set(calendar?.extraClosedSundays || []);
-  while (c <= e) {
-    const dow = c.getDay();
-    const ymd = toYMD(c);
-    if (dow === 0) {
-      if (!extraClosedSun.has(ymd)) sundays++;
-    } else if (dow === 6) {
-      if (extraOpenSat.has(ymd)) weekdays++;
-    } else {
-      if (!extraClosedWd.has(ymd)) weekdays++;
-    }
-    c.setDate(c.getDate() + 1);
-  }
-  return { weekdays, sundays };
-}
-function sumDayType(leaves: LeaveEntry[], calendar?: StoreCalendar | null) {
-  let weekdays = 0;
-  let sundays = 0;
-  leaves.forEach((lv) => {
-    const r = countByDayType(lv.start, lv.end, calendar);
-    weekdays += r.weekdays;
-    sundays += r.sundays;
-  });
-  return { weekdays, sundays };
-}
-
 interface LeaveSummaryPanelProps {
   allLeaves: LeaveEntry[];
   employeeDirectory: Employee[];
   storeCalendar: StoreCalendar;
-  /** วันตัดรอบของเดือนที่ปิดไปแล้ว — กำหนดว่าแต่ละรอบกินวันไหนถึงวันไหน */
+  /** วันตัดรอบของรอบที่ปิดไปแล้ว — กำหนดว่าแต่ละรอบกินวันไหนถึงวันไหน */
   periodCutoffs: PeriodCutoffs;
-  /** ยอดที่ล็อกไว้ตอนปิดรอบ — รอบที่ปิดแล้วโชว์ชุดนี้แทนยอดสด */
-  periodSnapshots: PeriodSnapshots;
-  onClosePeriod: (
-    yearMonth: string,
-    cutoffYmd: string,
-    snapshot: PeriodSnapshot,
-  ) => Promise<void>;
-  onReopenPeriod: (yearMonth: string) => Promise<void>;
-  onRelockPeriod: (
-    yearMonth: string,
-    snapshot: PeriodSnapshot,
-  ) => Promise<void>;
-  onFinalizePeriod: (
-    yearMonth: string,
-    snapshot: PeriodSnapshot,
-  ) => Promise<void>;
-  showToast: (msg: string) => void;
-  /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
-   *  อื่น (LeaveListPanel) */
+  /** รอบที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
+   *  อื่น (LeaveListPanel · PeriodSettlementPanel) */
   selectedMonth: string;
   onSelectMonth: (month: string) => void;
 }
@@ -139,39 +92,29 @@ export default function LeaveSummaryPanel({
   employeeDirectory,
   storeCalendar,
   periodCutoffs,
-  periodSnapshots,
-  onClosePeriod,
-  onReopenPeriod,
-  onRelockPeriod,
-  onFinalizePeriod,
-  showToast,
   selectedMonth,
   onSelectMonth,
 }: LeaveSummaryPanelProps) {
   const today = todayYmd();
-  const currentMonth = today.slice(0, 7);
   const [selYear, setSelYear] = useState(today.slice(0, 4));
   // key = `${empId}:${type}` — chip ที่ถูกกดให้แสดงรายการวัน
   const [expandedChip, setExpandedChip] = useState<string | null>(null);
 
-  // months = เดือนที่กำลังดู ∪ เดือนที่มีใบลา · เรียงใหม่→เก่า
-  // โชว์เฉพาะเดือนที่มีข้อมูล (ไม่ยัดเดือนปัจจุบันที่ว่าง) · selectedMonth คงไว้
-  // เสมอ → effectiveMonth = selectedMonth ตรงๆ
-  const months: string[] = useMemo(
+  // รอบที่เลือกดูได้ = รอบที่มีใบลา ∪ รอบของวันนี้ ∪ รอบที่กำลังดู
+  // ต้องแปลงใบลาเป็น key ของ "รอบ" ไม่ใช่เดือนปฏิทินของ lv.start — ไม่งั้น
+  // รอบที่กำลังสะสมอยู่จะหายจากลิสต์ (ดู periodKeysForLeaves)
+  const months = useMemo(
     () =>
-      [
-        ...new Set([
-          selectedMonth,
-          ...(allLeaves.map((lv) => lv.start.slice(0, 7)) as string[]),
-        ]),
-      ]
-        .sort()
-        .reverse(),
-    [allLeaves, selectedMonth],
+      periodKeysForLeaves(allLeaves, periodCutoffs, [
+        selectedMonth,
+        periodKeyForDate(today, periodCutoffs),
+      ]),
+    [allLeaves, periodCutoffs, selectedMonth, today],
   );
   const effectiveMonth = months.includes(selectedMonth)
     ? selectedMonth
-    : currentMonth;
+    : months[0];
+
   /* ─── รอบจ่ายของเดือนที่กำลังดู ─────────────────────────────────
      รอบ = ตั้งแต่วันถัดจากวันตัดของเดือนก่อน → วันตัดของเดือนนี้
      เดือนที่ยังไม่ปิด ใช้สิ้นเดือนเป็นขอบชั่วคราว                        */
@@ -179,111 +122,22 @@ export default function LeaveSummaryPanel({
     () => getPeriodRange(effectiveMonth, periodCutoffs),
     [effectiveMonth, periodCutoffs],
   );
-  const periodClosed = isPeriodClosed(effectiveMonth, periodCutoffs);
   const periodIsPlainMonth = isCalendarMonth(effectiveMonth, period);
 
-  /* ยอด "สด" ของรอบที่กำลังดู — คิดจากใบลา + ปฏิทินร้าน ณ ตอนนี้ */
-  const live = useMemo(
-    () => buildSettlement(employeeDirectory, allLeaves, storeCalendar, period),
-    [allLeaves, employeeDirectory, storeCalendar, period],
+  /* ปีที่ดูในสรุปรายปี — ใช้เป็น period เต็มปี เพื่อ clamp ใบลาคร่อมปี */
+  const yearPeriod = useMemo(
+    () => ({ start: `${selYear}-01-01`, end: `${selYear}-12-31` }),
+    [selYear],
   );
 
-  /* ─── ยอดล็อกหรือยัง ────────────────────────────────────────────
-     กดปิดรอบแล้วยอด "ยังไม่ล็อกทันที" — วันที่กดยังแก้ใบลา/ปฏิทินร้านได้
-     ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก               */
-  const snapshot = periodSnapshots[effectiveMonth];
-  const locked = isSnapshotLocked(snapshot);
-
-  // ช่วงวันที่โชว์คู่กับยอด ต้องเป็นช่วงที่ "ยอดชุดนั้น" คิดมา — ไม่งั้นถ้า
-  // ขอบรอบขยับทีหลัง หัวข้อความที่คัดลอกไปจะไม่ตรงกับตัวเลขข้างใต้
-  const shown =
-    locked && snapshot
-      ? {
-          rows: snapshot.rows,
-          totals: snapshot.totals,
-          range: { start: snapshot.start, end: snapshot.end },
-        }
-      : { ...live, range: period };
-  const drift = useMemo(
-    () => (locked && snapshot ? diffSettlement(snapshot, live) : []),
-    [locked, snapshot, live],
-  );
-
-  /* คิดยอดของ "ช่วงวันไหนก็ได้" — ใช้ตอนปิดรอบและตอนล็อกยอดย้อนหลัง
-     ⚠️ ตอนปิดรอบต้องส่งขอบรอบ "หลังปิด" (end = วันตัดที่เลือก) ไม่ใช่ขอบ
-     ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด — ไม่งั้นวันลาหลังวันตัด
-     จะถูกนับติดมาในรอบที่จ่ายไปแล้ว                                      */
-  const settlementFor = useCallback(
-    (range: LeavePeriod) =>
-      buildSettlement(employeeDirectory, allLeaves, storeCalendar, range),
-    [employeeDirectory, allLeaves, storeCalendar],
-  );
-
-  const handleClosePeriod = useCallback(
-    async (yearMonth: string, cutoffYmd: string) => {
-      const closedRange = {
-        start: getPeriodRange(yearMonth, periodCutoffs).start,
-        end: cutoffYmd,
-      };
-      // pending: true — ยอดยังไม่ล็อกจนกว่าจะพ้นวันนี้ ชุดนี้เป็นแค่ฉบับร่าง
-      // เผื่อไว้กรณีไม่มีใครเปิดแอปอีกเลย
-      await onClosePeriod(
-        yearMonth,
-        cutoffYmd,
-        makeSnapshot(yearMonth, closedRange, settlementFor(closedRange), {
-          closedOn: today,
-          pending: true,
-        }),
-      );
-    },
-    [onClosePeriod, periodCutoffs, settlementFor, today],
-  );
-
-  const handleRelockPeriod = useCallback(
-    () =>
-      onRelockPeriod(
-        effectiveMonth,
-        makeSnapshot(effectiveMonth, period, live, {
-          closedOn: today,
-          pending: false,
-        }),
-      ),
-    [onRelockPeriod, effectiveMonth, period, live, today],
-  );
-
-  /* พ้นวันที่กดปิดรอบแล้ว → ล็อกยอดจริงทับฉบับร่าง ครั้งเดียว
-     ไล่ทุกรอบที่ยังค้างเป็นฉบับร่าง ไม่ใช่แค่รอบที่กำลังดู — ไม่งั้นรอบที่
-     ปิดไว้แล้วไม่มีใครเปิดดูจะไม่ถูกล็อกสักที
-
-     ทำฝั่ง client ได้เพราะหลังพ้นวันตัด สิ่งเดียวที่ทำให้ยอดขยับคือ admin
-     ไปแก้ย้อนหลัง ซึ่งต้องเปิดแอปอยู่แล้ว — พอเปิดก็ล็อกให้ก่อน
-     (finalizePayrollPeriod เช็ค pending ซ้ำใน transaction กันเขียนซ้อน) */
-  const finalizingRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const snap of Object.values(periodSnapshots)) {
-      if (!shouldFinalizeSnapshot(snap, today)) continue;
-      // กันยิงซ้ำระหว่างรอ snapshot ใหม่เดินทางกลับมาจาก Firestore
-      if (finalizingRef.current.has(snap.yearMonth)) continue;
-      finalizingRef.current.add(snap.yearMonth);
-      // ใช้ขอบรอบที่บันทึกไว้ตอนปิด ไม่ใช่ขอบของรอบที่กำลังดูอยู่
-      const range = { start: snap.start, end: snap.end };
-      onFinalizePeriod(
-        snap.yearMonth,
-        makeSnapshot(snap.yearMonth, range, settlementFor(range), {
-          closedOn: snap.closedOn,
-          pending: false,
-        }),
-      ).catch((err) => {
-        // ปล่อยให้ลองใหม่ตอน render ถัดไป (เช่นเน็ตหลุดชั่วคราว)
-        finalizingRef.current.delete(snap.yearMonth);
-        console.error("[LeaveSummaryPanel] ล็อกยอดรอบไม่สำเร็จ:", err);
-      });
-    }
-  }, [periodSnapshots, today, settlementFor, onFinalizePeriod]);
-
-  const years: string[] = (
-    [...new Set(allLeaves.map((lv) => lv.start.slice(0, 4)))] as string[]
-  )
+  // ปีที่มีใบลา ∪ ปีนี้ — เอาทั้ง start และ end เพราะใบลาคร่อมปีใหม่
+  // จะมีแต่ปีเก่าถ้าดูแค่ start
+  const years: string[] = [
+    ...new Set([
+      today.slice(0, 4),
+      ...allLeaves.flatMap((lv) => [lv.start.slice(0, 4), lv.end.slice(0, 4)]),
+    ]),
+  ]
     .sort()
     .reverse();
 
@@ -294,7 +148,7 @@ export default function LeaveSummaryPanel({
         <div className="flex items-center justify-between mb-3.5">
           <div className="font-bold text-maroon text-base flex items-center gap-1.5">
             <IconCalendar size={16} strokeWidth={2.4} />
-            สรุปรอบจ่าย
+            {periodIsPlainMonth ? "สรุปลาเดือนนี้" : "สรุปลารอบนี้"}
           </div>
           <MonthChevronNav
             months={months}
@@ -302,28 +156,6 @@ export default function LeaveSummaryPanel({
             onSelect={onSelectMonth}
           />
         </div>
-        <PayrollPeriodBar
-          yearMonth={effectiveMonth}
-          period={period}
-          closed={periodClosed}
-          plainMonth={periodIsPlainMonth}
-          lockedAt={locked ? snapshot?.closedAt : undefined}
-          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
-          onClose={handleClosePeriod}
-          onReopen={onReopenPeriod}
-          showToast={showToast}
-        />
-        <PeriodSettlementTable
-          rows={shown.rows}
-          period={shown.range}
-          totals={shown.totals}
-          locked={locked}
-          lockedAt={locked ? snapshot?.closedAt : undefined}
-          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
-          drift={drift}
-          onRelock={handleRelockPeriod}
-          showToast={showToast}
-        />
         {employeeDirectory.length === 0 && (
           <div className="text-txt-soft text-sm text-center py-4">ไม่มีข้อมูล</div>
         )}
@@ -338,17 +170,26 @@ export default function LeaveSummaryPanel({
               );
               const totalTimes = monthLeaves.length;
               if (totalTimes === 0) return null;
-              const { weekdays, sundays } = sumDayType(
+              // ต้อง clamp ด้วย period เหมือนยอดหักด้านล่าง — ไม่งั้นใบลา
+              // คร่อมรอบจะโชว์จำนวนวันเต็มใบในทั้งสองรอบ ไม่ตรงกับยอดหัก
+              const { weekdays, sundays } = getCountedLeaveDays(
                 monthLeaves,
                 storeCalendar,
+                period,
               );
               const totalDays = weekdays + sundays;
-              const personalDays = monthLeaves
-                .filter((lv) => lv.type === "personal")
-                .reduce((s, lv) => s + lv.days, 0);
-              const sickDays = monthLeaves
-                .filter((lv) => lv.type === "sick")
-                .reduce((s, lv) => s + lv.days, 0);
+              const personalDays = typeDaysInPeriod(
+                monthLeaves,
+                "personal",
+                storeCalendar,
+                period,
+              );
+              const sickDays = typeDaysInPeriod(
+                monthLeaves,
+                "sick",
+                storeCalendar,
+                period,
+              );
               // ยอดหักของคนนี้ในรอบนี้ — clamp ด้วย period เพื่อให้ใบลา
               // คร่อมรอบคิดเฉพาะวันของรอบที่กำลังดู
               const deduction = getLeaveDeduction(
@@ -452,16 +293,13 @@ export default function LeaveSummaryPanel({
               );
             })
             .filter(Boolean)}
-          {employeeDirectory.every(
-            (emp) =>
-              allLeaves.filter(
-                (lv) =>
-                  lv.employeeId === emp.id &&
-                  lv.start.startsWith(effectiveMonth),
-              ).length === 0,
-          ) && (
+          {/* ต้องใช้ filter เดียวกับลิสต์ข้างบน — เดิมเช็คด้วย
+              startsWith(effectiveMonth) ทำให้ใบลาที่ยกไปรอบถัดไปโชว์การ์ด
+              พร้อมข้อความ "ไม่มีการลา" ใต้การ์ดตัวเอง */}
+          {allLeaves.filter((lv) => leaveOverlapsMonth(lv, period)).length ===
+            0 && (
             <div className="text-txt-soft text-sm text-center py-4">
-              ไม่มีการลาในเดือนนี้
+              {periodIsPlainMonth ? "ไม่มีการลาในเดือนนี้" : "ไม่มีการลาในรอบนี้"}
             </div>
           )}
         </div>
@@ -493,21 +331,29 @@ export default function LeaveSummaryPanel({
               const empId = employeeInfo.id;
               const name = employeeInfo.nickname || employeeInfo.name;
               const yearLeaves = allLeaves.filter(
-                (lv) => lv.employeeId === empId && lv.start.startsWith(selYear),
+                (lv) =>
+                  lv.employeeId === empId && leaveOverlapsMonth(lv, yearPeriod),
               );
               const totalTimes = yearLeaves.length;
               if (totalTimes === 0) return null;
-              const { weekdays, sundays } = sumDayType(
+              const { weekdays, sundays } = getCountedLeaveDays(
                 yearLeaves,
                 storeCalendar,
+                yearPeriod,
               );
               const totalDays = weekdays + sundays;
-              const personalDays = yearLeaves
-                .filter((lv) => lv.type === "personal")
-                .reduce((s, lv) => s + lv.days, 0);
-              const sickDays = yearLeaves
-                .filter((lv) => lv.type === "sick")
-                .reduce((s, lv) => s + lv.days, 0);
+              const personalDays = typeDaysInPeriod(
+                yearLeaves,
+                "personal",
+                storeCalendar,
+                yearPeriod,
+              );
+              const sickDays = typeDaysInPeriod(
+                yearLeaves,
+                "sick",
+                storeCalendar,
+                yearPeriod,
+              );
               const barPct = Math.min(100, (totalDays / 30) * 100);
               return (
                 <div
