@@ -10,6 +10,7 @@ import {
   subscribeEmployees,
 } from "../employees";
 import { subscribeLeaves } from "../leaves";
+import { EMPTY_CUTOFFS, subscribePayrollPeriods } from "../payrollPeriods";
 import { EMPTY_STORE_CALENDAR, subscribeStoreCalendar } from "../storeCalendar";
 
 interface SubscriptionResult<T> {
@@ -132,6 +133,16 @@ export function useStoreCalendar() {
   return useScopedSubscription(
     () => subscribeStoreCalendar,
     EMPTY_STORE_CALENDAR,
+    [],
+  );
+}
+
+/** รอบจ่ายเงินเดือน — public read · admin write · doc เดียว
+ *  /config/payrollPeriods (วันตัดรอบของแต่ละเดือนที่ปิดไปแล้ว) */
+export function usePayrollPeriods() {
+  return useScopedSubscription(
+    () => subscribePayrollPeriods,
+    EMPTY_CUTOFFS,
     [],
   );
 }

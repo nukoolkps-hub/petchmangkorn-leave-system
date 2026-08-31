@@ -107,6 +107,9 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `src/components/admin/AdminPanel.tsx` | Admin router — render section components |
 | `src/components/admin/EmployeeAdminPanel.tsx` + `EmployeeEditModal.tsx` | จัดการพนักงาน: list (ลากเรียง) + ฟอร์มแก้ไข |
 | `src/components/admin/LeaveSummaryPanel.tsx` / `LeaveListPanel.tsx` | สรุปลา / รายการลา |
+| `src/components/admin/PayrollPeriodBar.tsx` | แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ |
+| `src/components/admin/PeriodSettlementTable.tsx` | ตารางสรุปเงินทั้งรอบ (ทุกคน) + ปุ่มคัดลอก |
+| `src/utils/payrollPeriod.ts` | **Single source** ของขอบเขตรอบจ่าย (มี unit test) |
 | `src/components/admin/StoreCalendarPanel.tsx` | วันเปิด-ปิดร้าน (cascade ลบใบลาในวันที่ปิด) |
 | `src/components/home/TeamCalendar.tsx` | ปฏิทินทีม — ใช้ทั้งหน้าแรกพนักงานและ admin |
 | `src/types/index.ts` | Domain types ทั้งหมด |
@@ -186,6 +189,35 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 
 **ลาวันอาทิตย์ต้องติ๊กยืนยัน** — `SubmitLeaveConfirmModal` disable ปุ่มส่ง
 จนกว่าจะติ๊กรับทราบว่าจะถูกหัก (กันกดผ่านโดยไม่ทันอ่าน)
+
+### รอบจ่ายเงินเดือน (payrollPeriods)
+
+ร้านคิดเงินเดือน **ก่อนสิ้นเดือน** ได้ — วันตัดไม่คงที่ (อยู่ช่วง 25-31)
+admin เลือกวันแล้วกด **"ปิดรอบ"** ที่ `/admin → การลา → สรุปลา`
+
+```
+รอบ ส.ค. = 28 ก.ค. ──────► 27 ส.ค.   (ปิดรอบวันที่ 27)
+รอบ ก.ย. = 28 ส.ค. ──────► 30 ก.ย.   (ยังไม่ปิด = ใช้สิ้นเดือนชั่วคราว)
+```
+
+- doc เดียว `/config/payrollPeriods` → `{ cutoffs: { "2026-08": "2026-08-27" } }`
+  มีเฉพาะเดือนที่ปิดแล้ว
+- **วันลาหลังวันตัดยกไปรอบถัดไปอัตโนมัติ** — ไม่ต้องทำอะไรเพิ่ม
+- โควต้า/ค่าหัก/โบนัส ผูกกับ **รอบ** ไม่ใช่เดือนปฏิทิน
+- เปิดรอบกลับได้ถ้ากดผิดวัน (ปุ่ม "เปิดรอบกลับ")
+
+**Single source: `src/utils/payrollPeriod.ts`**
+
+- `getPeriodRange(yearMonth, cutoffs)` → `{ start, end }` ของรอบนั้น
+- `periodKeyForDate(ymd, cutoffs)` → วันนี้ตกรอบไหน (คืน key `YYYY-MM`)
+- `periodKeysInRange(start, end, cutoffs)` → ใบลาคร่อมกี่รอบ
+
+ฟังก์ชันใน `leaveUtils` รับ arg สุดท้ายเป็น `PeriodArg` = `"YYYY-MM"`
+(เดือนปฏิทินเต็มเดือน) **หรือ** `LeavePeriod` (ช่วงวันของรอบ) — call site
+ที่ยังส่งเดือนอยู่จึงไม่พัง
+
+⚠️ ยอดคำนวณสดจากใบลาทุกครั้ง **ไม่ได้ snapshot** — ปิดรอบแล้วถ้าไปแก้
+ปฏิทินร้านย้อนหลัง ยอดรอบนั้นจะขยับตาม (ถ้าต้องล็อกยอดต้องทำ snapshot เพิ่ม)
 
 ### ปฏิทินเปิด-ปิดร้าน (storeCalendar)
 

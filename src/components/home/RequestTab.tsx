@@ -22,6 +22,11 @@ import {
   hasPerfectAttendance,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  type PeriodCutoffs,
+  periodKeyForDate,
+} from "../../utils/payrollPeriod";
 import { isStoreClosed, isSunday } from "../../utils/storeCalendar";
 import ConfirmModal from "../modals/ConfirmModal";
 import SubmitLeaveConfirmModal from "../modals/SubmitLeaveConfirmModal";
@@ -72,6 +77,7 @@ interface RequestTabProps {
   onResetForm: () => void;
   onDelete: (id: string | number) => void;
   storeCalendar?: StoreCalendar | null;
+  periodCutoffs?: PeriodCutoffs;
 }
 
 export default function RequestTab({
@@ -93,6 +99,7 @@ export default function RequestTab({
   onResetForm,
   onDelete,
   storeCalendar,
+  periodCutoffs,
 }: RequestTabProps) {
   const [confirmLeave, setConfirmLeave] = useState<LeaveEntry | null>(null);
   // confirm modal ก่อนยื่นใบลาจริง · เปิดเมื่อ validate ผ่านแล้วเท่านั้น
@@ -119,6 +126,11 @@ export default function RequestTab({
   // คงค่าตอน module import) · sickMaxDate cap ปฏิทินลาป่วยที่ +14 วัน
   const todayStr = todayYmd();
   const currentMonth = todayStr.slice(0, 7);
+  /* รอบที่วันนี้ตกอยู่ — ใช้คิดโควต้า/ยอดหักให้ตรงกับที่ admin จ่ายจริง */
+  const currentPeriod = getPeriodRange(
+    periodKeyForDate(todayStr, periodCutoffs),
+    periodCutoffs,
+  );
   const sickMaxDate = addDaysYmd(todayStr, SICK_LEAVE_MAX_AHEAD_DAYS);
   // ช่วงเดือนที่เลื่อนดูได้ (ต่อเนื่อง · ใหม่→เก่า) — ครอบทั้งเดือนปัจจุบัน
   // และทุกเดือนที่มีใบลา (รวมใบลาล่วงหน้าในอนาคต)
@@ -185,13 +197,13 @@ export default function RequestTab({
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv: LeaveEntry) =>
-          lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentMonth),
+          lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentPeriod),
       )
     : [];
   const usedThisMonth = countWeekdayLeaves(
     monthLeavesForQuota,
     storeCalendar,
-    currentMonth,
+    currentPeriod,
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const rem = quota - usedThisMonth;
@@ -204,6 +216,7 @@ export default function RequestTab({
     myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
     { start: form.startDate, end: form.endDate },
     storeCalendar,
+    periodCutoffs,
   );
 
   /* เดือนนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่
@@ -212,7 +225,7 @@ export default function RequestTab({
   const bonusStillAvailable = hasPerfectAttendance(
     monthLeavesForQuota,
     storeCalendar,
-    currentMonth,
+    currentPeriod,
   );
 
   return (

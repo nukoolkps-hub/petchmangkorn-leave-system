@@ -1,5 +1,7 @@
 /* ─── Domain types — ระบบการลา ห้างทองเพชรมังกร ────────────────── */
 
+import type { PeriodCutoffs } from "../utils/payrollPeriod";
+
 export type LeaveKind = "personal" | "sick";
 export type LeaveBalance = Record<LeaveKind, number>;
 
@@ -56,6 +58,8 @@ export interface AppData {
   allLeaves: LeaveEntry[];
   employeeDirectory: Employee[];
   storeCalendar: StoreCalendar;
+  /** วันตัดรอบจ่ายของแต่ละเดือนที่ admin ปิดไปแล้ว (YYYY-MM → YYYY-MM-DD) */
+  periodCutoffs: PeriodCutoffs;
   loading: boolean;
   leavesLoading: boolean;
   error: Error | null;
@@ -67,4 +71,6 @@ export interface AppData {
   deleteEmployee: (id: string) => Promise<void>;
   reorderEmployees: (orderedIds: string[]) => Promise<void>;
   updateStoreCalendar: (fields: Partial<StoreCalendar>) => Promise<void>;
+  closePayrollPeriod: (yearMonth: string, cutoffYmd: string) => Promise<void>;
+  reopenPayrollPeriod: (yearMonth: string) => Promise<void>;
 }

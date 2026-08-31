@@ -141,6 +141,12 @@ service cloud.firestore {
       allow read:  if isSignedIn();
       allow write: if isAdmin();
     }
+    // รอบจ่ายเงินเดือน (วันตัดรอบของแต่ละเดือน): ทุกคน signed-in อ่านได้
+    // เพราะพนักงานต้องเห็นว่าวันลาของตัวเองตกรอบไหน · admin เท่านั้นปิดรอบ
+    match /config/payrollPeriods {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
     match /config/{document} {
       allow read, write: if false;
     }

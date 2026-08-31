@@ -17,6 +17,7 @@ import {
 import {
   useEmployeesForScope,
   useLeavesForScope,
+  usePayrollPeriods,
   useStoreCalendar,
 } from "../firebase/hooks/useFirestore";
 import {
@@ -24,6 +25,10 @@ import {
   deleteLeave as deleteLeaveDoc,
   updateLeave as updateLeaveDoc,
 } from "../firebase/leaves";
+import {
+  closePayrollPeriod as closePayrollPeriodDoc,
+  reopenPayrollPeriod as reopenPayrollPeriodDoc,
+} from "../firebase/payrollPeriods";
 import { updateStoreCalendar as updateStoreCalendarDoc } from "../firebase/storeCalendar";
 import type { AppData, Employee, LeaveEntry, StoreCalendar } from "../types";
 
@@ -55,6 +60,7 @@ export default function useFirebaseAppData({
   const allLeaves = leavesResult.data as LeaveEntry[];
 
   const storeCalendarResult = useStoreCalendar();
+  const payrollPeriodsResult = usePayrollPeriods();
 
   const error = employeesResult.error || leavesResult.error || null;
 
@@ -187,6 +193,7 @@ export default function useFirebaseAppData({
     allLeaves,
     employeeDirectory,
     storeCalendar: storeCalendarResult.data,
+    periodCutoffs: payrollPeriodsResult.data,
     loading: employeesResult.loading,
     leavesLoading: leavesResult.loading,
     error,
@@ -197,5 +204,8 @@ export default function useFirebaseAppData({
     deleteEmployee,
     reorderEmployees,
     updateStoreCalendar,
+    closePayrollPeriod: closePayrollPeriodDoc,
+    reopenPayrollPeriod: (yearMonth: string) =>
+      reopenPayrollPeriodDoc(yearMonth, payrollPeriodsResult.data),
   };
 }

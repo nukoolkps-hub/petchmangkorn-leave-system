@@ -9,12 +9,18 @@ import {
 } from "lucide-react";
 import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
-import { dateRange } from "../../utils/dateUtils";
+import { dateRange, fmtShort } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
   getMonthlySettlement,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  isCalendarMonth,
+  type PeriodCutoffs,
+  periodKeyForDate,
+} from "../../utils/payrollPeriod";
 import { isStoreClosed } from "../../utils/storeCalendar";
 import BonusNote from "../shared/BonusNote";
 import DeductionSummary from "../shared/DeductionSummary";
@@ -28,6 +34,7 @@ interface HomeTabProps {
   /** employee record ของผู้ใช้ปัจจุบัน (จาก useProfile) */
   currentEmployee?: Employee | null;
   storeCalendar?: StoreCalendar | null;
+  periodCutoffs?: PeriodCutoffs;
 }
 
 export default function HomeTab({
@@ -36,22 +43,27 @@ export default function HomeTab({
   employeeDirectory,
   currentEmployee,
   storeCalendar,
+  periodCutoffs,
 }: HomeTabProps) {
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const todayYmdStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  /* รอบที่ "วันนี้" ตกอยู่ — ถ้า admin ปิดรอบเดือนนี้ไปแล้วและวันนี้เลย
+     วันตัดมา จะกลายเป็นรอบของเดือนถัดไปโดยอัตโนมัติ */
+  const yearMonth = periodKeyForDate(todayYmdStr, periodCutoffs);
+  const period = getPeriodRange(yearMonth, periodCutoffs);
+  const periodIsPlainMonth = isCalendarMonth(yearMonth, period);
 
   /* ─── Monthly quota — count weekday days (Mon-Fri) ไม่ใช่จำนวนใบลา
        1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักทันที ไม่นับโควต้า */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
-        (lv) =>
-          lv.employeeId === profile.id && leaveOverlapsMonth(lv, yearMonth),
+        (lv) => lv.employeeId === profile.id && leaveOverlapsMonth(lv, period),
       )
     : [];
   const usedThisMonth = countWeekdayLeaves(
     monthLeavesForQuota,
     storeCalendar,
-    yearMonth,
+    period,
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const remaining = quota - usedThisMonth;
@@ -59,7 +71,7 @@ export default function HomeTab({
   const { deduction, bonus } = getMonthlySettlement(
     monthLeavesForQuota,
     storeCalendar,
-    yearMonth,
+    period,
   );
   const overQuotaDeduction = deduction.total > 0;
 
@@ -77,10 +89,18 @@ export default function HomeTab({
               โควต้าการลาเดือนนี้
             </div>
             <div className="text-sm text-txt-soft mt-0.5">
-              {now.toLocaleDateString("th-TH", {
-                month: "long",
-                year: "numeric",
-              })}
+              {periodIsPlainMonth ? (
+                now.toLocaleDateString("th-TH", {
+                  month: "long",
+                  year: "numeric",
+                })
+              ) : (
+                // รอบไม่ตรงเดือนปฏิทิน (admin ปิดรอบก่อนสิ้นเดือน) →
+                // ต้องบอกช่วงวันให้ชัด ไม่งั้นพนักงานนับเองไม่ตรง
+                <>
+                  รอบ {fmtShort(period.start)} – {fmtShort(period.end)}
+                </>
+              )}
             </div>
           </div>
           <div className="text-right">

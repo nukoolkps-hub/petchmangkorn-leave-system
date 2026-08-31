@@ -109,6 +109,7 @@ export default function LeaveApp() {
     allLeaves,
     employeeDirectory,
     storeCalendar,
+    periodCutoffs,
     loading,
     leavesLoading,
     error,
@@ -118,6 +119,8 @@ export default function LeaveApp() {
     deleteEmployee,
     reorderEmployees,
     updateStoreCalendar: updateStoreCalendarAction,
+    closePayrollPeriod,
+    reopenPayrollPeriod,
   } = useAppData({
     authUid: authUser?.uid || "",
     isAdmin,
@@ -276,6 +279,7 @@ export default function LeaveApp() {
                       employeeDirectory={employeeDirectory}
                       currentEmployee={currentEmployee}
                       storeCalendar={storeCalendar}
+                      periodCutoffs={periodCutoffs}
                     />
                   )
                 }
@@ -317,6 +321,7 @@ export default function LeaveApp() {
                         leaveForm.handleDelete(id)
                       }
                       storeCalendar={storeCalendar}
+                      periodCutoffs={periodCutoffs}
                     />
                   )
                 }
@@ -341,6 +346,9 @@ export default function LeaveApp() {
                       onDeleteEmployee={handleDeleteEmployee}
                       onReorderEmployees={reorderEmployees}
                       storeCalendar={storeCalendar}
+                      periodCutoffs={periodCutoffs}
+                      onClosePeriod={closePayrollPeriod}
+                      onReopenPeriod={reopenPayrollPeriod}
                       onUpdateStoreCalendar={updateStoreCalendarAction}
                       showToast={showToast}
                     />
