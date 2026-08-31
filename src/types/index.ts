@@ -88,4 +88,9 @@ export interface AppData {
     yearMonth: string,
     snapshot: PeriodSnapshot,
   ) => Promise<void>;
+  /** ล็อกยอดจริงหลังพ้นวันที่กดปิดรอบ — เขียนทับฉบับร่างครั้งเดียว */
+  finalizePayrollPeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
 }

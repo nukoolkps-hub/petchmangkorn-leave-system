@@ -4,15 +4,19 @@
    ต่างจากลิสต์ด้านล่างของ LeaveSummaryPanel ตรงที่โชว์ "ทุกคน" รวมคนที่
    ไม่มีใบลาเลย (ซึ่งคือกลุ่มที่ได้โบนัส) — ลิสต์นั้นโชว์เฉพาะคนที่มีใบลา
 
-   รอบที่ปิดแล้วโชว์ "ยอดที่ล็อกไว้" (snapshot ตอนกดปิดรอบ) ไม่ใช่ยอดสด
-   ถ้ายอดสดขยับไปจากที่ล็อก (มีคนแก้ใบลา/ปฏิทินร้านย้อนหลัง) จะขึ้นแถบ
-   เตือนพร้อมปุ่มให้ admin ตัดสินใจว่าจะยึดยอดใหม่ไหม                     */
+   รอบที่ล็อกยอดแล้วโชว์ "ยอดที่ล็อกไว้" (snapshot) ไม่ใช่ยอดสด — ถ้ายอดสด
+   ขยับไปจากที่ล็อก (มีคนแก้ใบลา/ปฏิทินร้านย้อนหลัง) จะขึ้นแถบเตือนพร้อมปุ่ม
+   ให้ admin ตัดสินใจว่าจะยึดยอดใหม่ไหม
+
+   ปิดรอบวันไหน ยอดจะยังไม่ล็อกจนพ้นวันนั้น (เที่ยงคืน) — ระหว่างนั้นโชว์
+   ยอดสดตามปกติ พร้อมป้ายบอกว่าจะล็อกเมื่อไหร่                            */
 
 import {
   Check as IconCheck,
   Copy as IconCopy,
   LockKeyhole as IconLock,
   RefreshCw as IconRelock,
+  LockKeyholeOpen as IconUnlock,
   AlertTriangle as IconWarn,
 } from "lucide-react";
 import { useState } from "react";
@@ -32,8 +36,10 @@ interface Props {
   totals: SettlementTotals;
   /** true = ตัวเลขชุดนี้มาจาก snapshot ที่ล็อกไว้ตอนปิดรอบ */
   locked: boolean;
-  /** epoch ms ตอนกดปิดรอบ (มีเมื่อ locked) */
+  /** epoch ms ตอนล็อกยอด (มีเมื่อ locked) */
   lockedAt?: number;
+  /** ปิดรอบแล้วแต่ยังไม่ล็อก — วันที่ยอดจะล็อก (YYYY-MM-DD) */
+  lockPendingFrom?: string;
   /** คนที่ยอดสดตอนนี้ไม่ตรงกับที่ล็อกไว้ */
   drift: SettlementDrift[];
   onRelock: () => Promise<void>;
@@ -49,7 +55,7 @@ function buildCopyText(
 ): string {
   const lines = [
     `สรุปรอบ ${fmtShort(period.start)} – ${fmtShort(period.end)}${
-      locked ? " (ปิดรอบแล้ว)" : ""
+      locked ? " (ล็อกยอดแล้ว)" : ""
     }`,
     "",
     ...rows.map((r) => {
@@ -89,6 +95,7 @@ export default function PeriodSettlementTable({
   totals,
   locked,
   lockedAt,
+  lockPendingFrom,
   drift,
   onRelock,
   showToast,
@@ -128,12 +135,19 @@ export default function PeriodSettlementTable({
       <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-cream border-b border-bdr">
         <div className="min-w-0">
           <span className="text-sm font-bold text-maroon">สรุปเงินทั้งรอบ</span>
-          {locked && (
+          {locked ? (
             <span className="ml-1.5 text-[11px] text-green font-semibold inline-flex items-center gap-1 whitespace-nowrap">
               <IconLock size={11} strokeWidth={2.6} />
               ยอดล็อกแล้ว
               {lockedAt ? ` ${fmtShort(toYMD(new Date(lockedAt)))}` : ""}
             </span>
+          ) : (
+            lockPendingFrom && (
+              <span className="ml-1.5 text-[11px] text-amber font-semibold inline-flex items-center gap-1 whitespace-nowrap">
+                <IconUnlock size={11} strokeWidth={2.6} />
+                ยังไม่ล็อก — ล็อก {fmtShort(lockPendingFrom)}
+              </span>
+            )
           )}
         </div>
         <button

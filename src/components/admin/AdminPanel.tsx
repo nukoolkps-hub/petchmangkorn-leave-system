@@ -31,6 +31,7 @@ export default function AdminPanel({
   onClosePeriod,
   onReopenPeriod,
   onRelockPeriod,
+  onFinalizePeriod,
   onUpdateStoreCalendar,
   showToast,
   // controlled by App so the desktop Sidebar can drive section as well
@@ -185,6 +186,7 @@ export default function AdminPanel({
             onClosePeriod={onClosePeriod}
             onReopenPeriod={onReopenPeriod}
             onRelockPeriod={onRelockPeriod}
+            onFinalizePeriod={onFinalizePeriod}
             showToast={showToast}
             selectedMonth={adminMonth}
             onSelectMonth={setAdminMonth}

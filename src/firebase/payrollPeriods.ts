@@ -9,8 +9,11 @@
    มีแค่รอบที่ปิดแล้ว · รอบที่ยังไม่ปิดถือว่าเปิดอยู่ (ใช้สิ้นเดือนเป็นขอบ
    ชั่วคราว — ดู utils/payrollPeriod.ts) และคิดยอดสดตลอด
 
-   snapshot = ยอด ณ วินาทีที่กดปิดรอบ · หลังจากนั้นถึงจะไปแก้ปฏิทินร้าน
-   หรือใบลาย้อนหลัง ตัวเลขของรอบที่จ่ายไปแล้วก็ไม่ขยับ                    */
+   snapshot ไม่ได้ล็อกทันทีที่กดปิดรอบ — "วันที่กด" ยังแก้ใบลา/ปฏิทินร้าน
+   ได้อยู่ ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก
+   · กดปิดรอบ → เขียน snapshot ฉบับร่าง `pending: true`
+   · พ้นเที่ยงคืน → finalizePayrollPeriod() เขียนทับด้วยยอดจริง pending: false
+   หลังล็อกแล้ว จะไปแก้ปฏิทินร้าน/ใบลาย้อนหลังยังไง ยอดรอบนั้นก็ไม่ขยับ  */
 
 import { doc, onSnapshot, runTransaction } from "firebase/firestore";
 import type { PeriodCutoffs } from "../utils/payrollPeriod";
@@ -81,6 +84,10 @@ function sanitizeRow(raw: unknown): SettlementRow | null {
 
 /** snapshot ที่หน้าตาไม่ครบ = ทิ้งทั้งรอบ ดีกว่าโชว์ยอดครึ่ง ๆ กลาง ๆ
  *  ให้ระบบตกกลับไปคิดยอดสด (ซึ่งยังถูกอยู่ แค่ไม่ได้ล็อก) */
+function ymdOr(raw: unknown, fallback: string): string {
+  return typeof raw === "string" && YMD.test(raw) ? raw : fallback;
+}
+
 function sanitizeSnapshot(key: string, raw: unknown): PeriodSnapshot | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as Record<string, unknown>;
@@ -89,11 +96,17 @@ function sanitizeSnapshot(key: string, raw: unknown): PeriodSnapshot | null {
   if (!Array.isArray(s.rows)) return null;
   const rows = s.rows.map(sanitizeRow).filter((r): r is SettlementRow => !!r);
   const t = (s.totals || {}) as Record<string, unknown>;
+  // snapshot รุ่นเก่า (ก่อนมีการหน่วงล็อกถึงเที่ยงคืน) ไม่มี closedOn/pending
+  // → ถือว่าล็อกไปแล้ว ไม่ใช่ฉบับร่างค้าง
+  const closedOn = ymdOr(s.closedOn, s.end);
   return {
     yearMonth: key,
     start: s.start,
     end: s.end,
     closedAt: num(s.closedAt),
+    closedOn,
+    lockedFrom: ymdOr(s.lockedFrom, closedOn),
+    pending: s.pending === true,
     rows,
     totals: {
       deducted: num(t.deducted),
@@ -169,10 +182,13 @@ function pruneSnapshots(snapshots: PeriodSnapshots): PeriodSnapshots {
   );
 }
 
-/** ปิดรอบของ yearMonth ที่วันที่ cutoffYmd แล้วล็อกยอดไว้เป็น snapshot
+/** ปิดรอบของ yearMonth ที่วันที่ cutoffYmd แล้วเก็บยอดฉบับร่างไว้
  *
- *  เขียนวันตัด + ยอดที่ล็อก ใน transaction เดียว — ไม่งั้นถ้าพลาดกลางทาง
- *  จะได้รอบที่ปิดแล้วแต่ไม่มียอดล็อก (หรือกลับกัน)                        */
+ *  เขียนวันตัด + ยอด ใน transaction เดียว — ไม่งั้นถ้าพลาดกลางทาง
+ *  จะได้รอบที่ปิดแล้วแต่ไม่มียอดเก็บไว้ (หรือกลับกัน)
+ *
+ *  snapshot ที่ส่งมาควรเป็น `pending: true` — ยอดจริงจะถูกเขียนทับโดย
+ *  finalizePayrollPeriod() หลังพ้นวันที่กดปิดรอบ                          */
 export async function closePayrollPeriod(
   yearMonth: string,
   cutoffYmd: string,
@@ -197,6 +213,26 @@ export async function reopenPayrollPeriod(yearMonth: string): Promise<void> {
   });
 }
 
+/** ล็อกยอดจริงหลังพ้นวันที่กดปิดรอบ — เขียนทับฉบับร่างครั้งเดียว
+ *
+ *  ไม่ทำอะไรถ้ารอบนี้ไม่ได้อยู่ในสถานะฉบับร่างแล้ว (ล็อกไปแล้ว หรือถูก
+ *  เปิดรอบกลับ) — กันหลาย ๆ เครื่องที่เปิดแอปพร้อมกันเขียนทับกันเอง      */
+export async function finalizePayrollPeriod(
+  yearMonth: string,
+  snapshot: PeriodSnapshot,
+): Promise<void> {
+  await mutatePeriods((cur) => {
+    if (!cur.snapshots[yearMonth]?.pending) return cur;
+    return {
+      cutoffs: cur.cutoffs,
+      snapshots: {
+        ...cur.snapshots,
+        [yearMonth]: { ...snapshot, pending: false },
+      },
+    };
+  });
+}
+
 /** ล็อกยอดใหม่ทับของเดิม — ใช้ตอนยอดสดไม่ตรงกับที่ล็อกไว้ (มีคนแก้ใบลา/
  *  ปฏิทินร้านย้อนหลัง) แล้ว admin ยืนยันว่าจะยึดยอดใหม่ · วันตัดคงเดิม */
 export async function relockPayrollPeriod(
@@ -205,6 +241,9 @@ export async function relockPayrollPeriod(
 ): Promise<void> {
   await mutatePeriods((cur) => ({
     cutoffs: cur.cutoffs,
-    snapshots: { ...cur.snapshots, [yearMonth]: snapshot },
+    snapshots: {
+      ...cur.snapshots,
+      [yearMonth]: { ...snapshot, pending: false },
+    },
   }));
 }

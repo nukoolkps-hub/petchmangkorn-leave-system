@@ -13,6 +13,7 @@
    Pure module — ห้ามเรียก Firestore ที่นี่                              */
 
 import type { Employee, LeaveEntry, StoreCalendar } from "../types";
+import { addDaysYmd } from "./dateUtils";
 import {
   getLeaveBonus,
   getLeaveDeduction,
@@ -45,15 +46,26 @@ export interface PeriodSettlement {
   totals: SettlementTotals;
 }
 
-/** ยอดที่ล็อกไว้ตอนกดปิดรอบ — เก็บลง Firestore ตรง ๆ (plain object) */
+/** ยอดของรอบที่ปิดแล้ว — เก็บลง Firestore ตรง ๆ (plain object)
+ *
+ *  ⚠️ ยอดยัง **ไม่ล็อกทันที** ตอนกดปิดรอบ — วันที่กดยังแก้ใบลา/ปฏิทินร้าน
+ *  ได้อยู่ ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก
+ *  · `pending = true` → ยังไม่ล็อก ตัวเลขในนี้เป็นแค่ฉบับร่าง
+ *  · `pending = false` → ล็อกแล้ว ตัวเลขในนี้คือยอดทางการของรอบ           */
 export interface PeriodSnapshot {
   /** รอบไหน (YYYY-MM) */
   yearMonth: string;
   /** ช่วงวันของรอบ ณ ตอนปิด — เก็บไว้ด้วยเพราะขอบรอบก็เปลี่ยนได้ */
   start: string;
   end: string;
-  /** epoch ms ตอนกดปิดรอบ */
+  /** epoch ms ตอนบันทึกยอดชุดนี้ */
   closedAt: number;
+  /** วันที่กดปิดรอบ (YYYY-MM-DD ตามเครื่อง admin) */
+  closedOn: string;
+  /** ตั้งแต่วันนี้เป็นต้นไปยอดถึงจะล็อก = closedOn + 1 วัน */
+  lockedFrom: string;
+  /** true = ยังไม่ถึงเวลาล็อก · ตัวเลขที่โชว์ต้องเป็นยอดสด ไม่ใช่ชุดนี้ */
+  pending: boolean;
   rows: SettlementRow[];
   totals: SettlementTotals;
 }
@@ -105,24 +117,57 @@ export function buildSettlement(
   return { rows, totals: sumTotals(rows) };
 }
 
-/** ประกอบ snapshot จากยอดที่คิดได้ ณ ตอนกดปิดรอบ
+/** ประกอบ snapshot จากยอดที่คิดได้ ณ ตอนนั้น
  *
  *  ⚠️ period ที่ส่งเข้ามาต้องเป็นขอบรอบ "หลังปิด" แล้ว (end = วันตัดที่เลือก)
- *  ไม่ใช่ขอบชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด                    */
+ *  ไม่ใช่ขอบชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด
+ *
+ *  - ตอนกดปิดรอบ  → `pending: true` (ฉบับร่าง · ยอดจะล็อกหลังเที่ยงคืน)
+ *  - ตอนล็อกจริง   → `pending: false`                                    */
 export function makeSnapshot(
   yearMonth: string,
   period: LeavePeriod,
   settlement: PeriodSettlement,
-  closedAt: number = Date.now(),
+  opts: {
+    /** วันที่กดปิดรอบ (YYYY-MM-DD) */
+    closedOn: string;
+    pending: boolean;
+    closedAt?: number;
+    /** override วันที่เริ่มล็อก — ปกติคำนวณจาก closedOn + 1 วัน */
+    lockedFrom?: string;
+  },
 ): PeriodSnapshot {
   return {
     yearMonth,
     start: period.start,
     end: period.end,
-    closedAt,
+    closedAt: opts.closedAt ?? Date.now(),
+    closedOn: opts.closedOn,
+    lockedFrom: opts.lockedFrom ?? addDaysYmd(opts.closedOn, 1),
+    pending: opts.pending,
     rows: settlement.rows,
     totals: settlement.totals,
   };
+}
+
+/** ยอดของรอบนี้ล็อกแล้วหรือยัง — ยังไม่ล็อก = ต้องโชว์ยอดสด */
+export function isSnapshotLocked(snapshot?: PeriodSnapshot | null): boolean {
+  return Boolean(snapshot) && !snapshot?.pending;
+}
+
+/** ถึงเวลาล็อกยอดของรอบนี้แล้วหรือยัง (พ้นวันที่กดปิดรอบมาแล้ว)
+ *
+ *  true = ต้องคิดยอดสด ณ ตอนนี้แล้วเขียนทับฉบับร่าง · เรียกจากฝั่ง admin
+ *  เท่านั้น เพราะ /config/payrollPeriods เขียนได้แค่ admin
+ *
+ *  ทำไมฝั่ง client ถึงพอ: หลังพ้นวันตัดไปแล้ว สิ่งเดียวที่ทำให้ยอดของรอบ
+ *  ขยับได้คือ admin ไปแก้ปฏิทินร้าน/ใบลาย้อนหลัง ซึ่งต้องเปิดแอปอยู่แล้ว —
+ *  พอเปิดแอป ตัวนี้จะล็อกให้ก่อนที่จะแก้อะไรได้                          */
+export function shouldFinalizeSnapshot(
+  snapshot: PeriodSnapshot | null | undefined,
+  todayYmd: string,
+): boolean {
+  return Boolean(snapshot?.pending) && todayYmd >= (snapshot?.lockedFrom ?? "");
 }
 
 /** คนที่ยอดสด "ตอนนี้" ไม่ตรงกับยอดที่ล็อกไว้ตอนปิดรอบ */

@@ -217,7 +217,9 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 
 - doc เดียว `/config/payrollPeriods` → `{ cutoffs, snapshots }` มีเฉพาะเดือนที่ปิดแล้ว
   - `cutoffs: { "2026-08": "2026-08-27" }` — วันตัดรอบ
-  - `snapshots: { "2026-08": { start, end, closedAt, rows, totals } }` — **ยอดที่ล็อกไว้**
+  - `snapshots: { "2026-08": { start, end, closedAt, closedOn, lockedFrom,
+    pending, rows, totals } }` — **ยอดที่ล็อกไว้** (`pending: true` = ฉบับร่าง
+    ยังไม่ล็อก)
 - **วันลาหลังวันตัดยกไปรอบถัดไปอัตโนมัติ** — ไม่ต้องทำอะไรเพิ่ม
 - โควต้า/ค่าหัก/โบนัส ผูกกับ **รอบ** ไม่ใช่เดือนปฏิทิน
 - เปิดรอบกลับได้ถ้ากดผิดวัน (ปุ่ม "เปิดรอบกลับ")
@@ -235,27 +237,47 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 ### ล็อกยอดตอนปิดรอบ (snapshot)
 
 รอบที่ **ยังไม่ปิด** คิดยอดสดจากใบลา + ปฏิทินร้านทุกครั้ง ·
-กด **"ปิดรอบ"** เมื่อไหร่ ระบบเก็บยอดของทุกคน ณ วินาทีนั้นเป็น snapshot →
-รอบที่ปิดแล้วโชว์ตัวเลขจาก snapshot **ไม่คิดใหม่** แก้ปฏิทินร้าน/ใบลา
-ย้อนหลังก็ไม่ทำให้ยอดที่จ่ายไปแล้วขยับ
+กด **"ปิดรอบ"** แล้วยอด **ยังไม่ล็อกทันที** — วันที่กดยังแก้ใบลา/ปฏิทินร้าน
+ได้อยู่ ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก ·
+ล็อกแล้วรอบนั้นโชว์ตัวเลขจาก snapshot **ไม่คิดใหม่** แก้ย้อนหลังก็ไม่ขยับ
+
+```
+กดปิดรอบ 27 ส.ค.  →  27 ส.ค. ยังแก้ได้ (pending, โชว์ยอดสด)
+                   →  28 ส.ค. 00:00 เป็นต้นไป: ล็อกยอดตามสิ้นวันที่ 27
+```
+
+**ใครเป็นคนล็อก:** ฝั่ง client (`LeaveSummaryPanel` useEffect →
+`finalizePayrollPeriod`) ตอน admin เปิดหน้าสรุปครั้งแรกหลังพ้นเที่ยงคืน ·
+ไม่ได้ทำที่ Cloud Function เพราะ `functions/` มี `rootDir: "src"` import
+`src/utils/leaveUtils` ข้ามมาไม่ได้ → ต้อง copy สูตรเงินไปอีกชุด ซึ่งจะ drift
+
+ที่ยอมรับได้เพราะหลังพ้นวันตัดแล้ว **สิ่งเดียวที่ทำให้ยอดรอบขยับคือ admin
+ไปแก้ย้อนหลัง** ซึ่งต้องเปิดแอปอยู่แล้ว — พอเปิด useEffect จะล็อกให้ก่อน
+(พนักงานยื่นใบลาใหม่ได้เฉพาะวันนี้เป็นต้นไป ซึ่งตกรอบถัดไปแล้ว)
 
 **Single source: `src/utils/periodSettlement.ts`** (pure · มี unit test)
 
 - `buildSettlement(employees, leaves, calendar, period)` → `{ rows, totals }`
   ยอดของทุกคนในรอบ (คิดทีละคนแล้วรวม — โควต้า/โบนัสเป็นของแต่ละคน)
-- `makeSnapshot(yearMonth, period, settlement, closedAt?)` → `PeriodSnapshot`
-  · **ต้องส่ง period ที่ `end` = วันตัดที่เลือก** ไม่ใช่ขอบชั่วคราวสิ้นเดือน
-  ที่โชว์อยู่ตอนรอบยังเปิด
+- `makeSnapshot(yearMonth, period, settlement, { closedOn, pending })` →
+  `PeriodSnapshot` · **ต้องส่ง period ที่ `end` = วันตัดที่เลือก** ไม่ใช่ขอบ
+  ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด · `lockedFrom` = `closedOn` + 1 วัน
+- `isSnapshotLocked(snapshot)` → ล็อกแล้วหรือยัง (ยังไม่ล็อก = ต้องโชว์ยอดสด)
+- `shouldFinalizeSnapshot(snapshot, todayYmd)` → ถึงเวลาล็อกหรือยัง
 - `diffSettlement(snapshot, live)` → คนที่ยอดสด "ตอนนี้" ไม่ตรงกับที่ล็อกไว้
   (มีคนแก้ย้อนหลัง) → UI ขึ้นแถบแดงเตือน + ปุ่ม "ยึดยอดใหม่"
 
-Mutation ทั้งหมด (`closePayrollPeriod` / `reopenPayrollPeriod` /
-`relockPayrollPeriod` ใน `src/firebase/payrollPeriods.ts`) ทำผ่าน
+Mutation ทั้งหมด (`closePayrollPeriod` / `finalizePayrollPeriod` /
+`reopenPayrollPeriod` / `relockPayrollPeriod` ใน
+`src/firebase/payrollPeriods.ts`) ทำผ่าน
 `runTransaction` แล้วเขียนทับทั้ง doc — เพราะ `setDoc(merge)` ลบ key ออกจาก
 map ไม่ได้ · เก็บย้อนหลังสูงสุด `MAX_SNAPSHOTS` (60) รอบ เกินนั้นตัดรอบเก่าสุดทิ้ง
 
 - **เปิดรอบกลับ** ลบ snapshot ทิ้งด้วย (ยอดที่ล็อกผูกกับวันตัดที่กำลังยกเลิก)
-- snapshot ที่หน้าตาไม่ครบถูก sanitize ทิ้งทั้งรอบ → ตกกลับไปคิดยอดสด
+- `finalizePayrollPeriod` เช็ค `pending` ซ้ำใน transaction → หลายเครื่องเปิด
+  พร้อมกันก็เขียนครั้งเดียว
+- snapshot ที่หน้าตาไม่ครบถูก sanitize ทิ้งทั้งรอบ → ตกกลับไปคิดยอดสด ·
+  snapshot รุ่นเก่าที่ไม่มี `closedOn`/`pending` ถือว่าล็อกแล้ว
 
 ### ปฏิทินเปิด-ปิดร้าน (storeCalendar)
 

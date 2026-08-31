@@ -5,7 +5,7 @@ import {
   Cross as IconCross,
   Sun as IconSun,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
@@ -20,9 +20,11 @@ import {
 import {
   buildSettlement,
   diffSettlement,
+  isSnapshotLocked,
   makeSnapshot,
   type PeriodSnapshot,
   type PeriodSnapshots,
+  shouldFinalizeSnapshot,
 } from "../../utils/periodSettlement";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
@@ -120,6 +122,10 @@ interface LeaveSummaryPanelProps {
     yearMonth: string,
     snapshot: PeriodSnapshot,
   ) => Promise<void>;
+  onFinalizePeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   showToast: (msg: string) => void;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
    *  อื่น (LeaveListPanel) */
@@ -137,6 +143,7 @@ export default function LeaveSummaryPanel({
   onClosePeriod,
   onReopenPeriod,
   onRelockPeriod,
+  onFinalizePeriod,
   showToast,
   selectedMonth,
   onSelectMonth,
@@ -181,27 +188,31 @@ export default function LeaveSummaryPanel({
     [allLeaves, employeeDirectory, storeCalendar, period],
   );
 
-  /* ยอดที่ล็อกไว้ตอนปิดรอบ — ถ้ามี ให้ถือว่านี่คือยอดทางการของรอบนั้น
-     (ยอดสดยังคิดต่อไปเพื่อเอามาเทียบว่ามีอะไรขยับหลังปิดรอบไหม)        */
+  /* ─── ยอดล็อกหรือยัง ────────────────────────────────────────────
+     กดปิดรอบแล้วยอด "ยังไม่ล็อกทันที" — วันที่กดยังแก้ใบลา/ปฏิทินร้านได้
+     ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก               */
   const snapshot = periodSnapshots[effectiveMonth];
+  const locked = isSnapshotLocked(snapshot);
+
   // ช่วงวันที่โชว์คู่กับยอด ต้องเป็นช่วงที่ "ยอดชุดนั้น" คิดมา — ไม่งั้นถ้า
   // ขอบรอบขยับทีหลัง หัวข้อความที่คัดลอกไปจะไม่ตรงกับตัวเลขข้างใต้
-  const shown = snapshot
-    ? {
-        rows: snapshot.rows,
-        totals: snapshot.totals,
-        range: { start: snapshot.start, end: snapshot.end },
-      }
-    : { ...live, range: period };
+  const shown =
+    locked && snapshot
+      ? {
+          rows: snapshot.rows,
+          totals: snapshot.totals,
+          range: { start: snapshot.start, end: snapshot.end },
+        }
+      : { ...live, range: period };
   const drift = useMemo(
-    () => (snapshot ? diffSettlement(snapshot, live) : []),
-    [snapshot, live],
+    () => (locked && snapshot ? diffSettlement(snapshot, live) : []),
+    [locked, snapshot, live],
   );
 
-  /* ปิดรอบ = ล็อกยอด ณ ตอนนั้นไปพร้อมกัน
-     ⚠️ ต้องคิดยอดด้วยขอบรอบ "หลังปิด" (end = วันตัดที่เลือก) ไม่ใช่ขอบ
+  /* คิดยอดของ "ช่วงวันไหนก็ได้" — ใช้ตอนปิดรอบและตอนล็อกยอดย้อนหลัง
+     ⚠️ ตอนปิดรอบต้องส่งขอบรอบ "หลังปิด" (end = วันตัดที่เลือก) ไม่ใช่ขอบ
      ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด — ไม่งั้นวันลาหลังวันตัด
-     จะถูกล็อกติดมาในรอบที่จ่ายไปแล้ว                                     */
+     จะถูกนับติดมาในรอบที่จ่ายไปแล้ว                                      */
   const settlementFor = useCallback(
     (range: LeavePeriod) =>
       buildSettlement(employeeDirectory, allLeaves, storeCalendar, range),
@@ -214,23 +225,61 @@ export default function LeaveSummaryPanel({
         start: getPeriodRange(yearMonth, periodCutoffs).start,
         end: cutoffYmd,
       };
+      // pending: true — ยอดยังไม่ล็อกจนกว่าจะพ้นวันนี้ ชุดนี้เป็นแค่ฉบับร่าง
+      // เผื่อไว้กรณีไม่มีใครเปิดแอปอีกเลย
       await onClosePeriod(
         yearMonth,
         cutoffYmd,
-        makeSnapshot(yearMonth, closedRange, settlementFor(closedRange)),
+        makeSnapshot(yearMonth, closedRange, settlementFor(closedRange), {
+          closedOn: today,
+          pending: true,
+        }),
       );
     },
-    [onClosePeriod, periodCutoffs, settlementFor],
+    [onClosePeriod, periodCutoffs, settlementFor, today],
   );
 
   const handleRelockPeriod = useCallback(
     () =>
       onRelockPeriod(
         effectiveMonth,
-        makeSnapshot(effectiveMonth, period, live),
+        makeSnapshot(effectiveMonth, period, live, {
+          closedOn: today,
+          pending: false,
+        }),
       ),
-    [onRelockPeriod, effectiveMonth, period, live],
+    [onRelockPeriod, effectiveMonth, period, live, today],
   );
+
+  /* พ้นวันที่กดปิดรอบแล้ว → ล็อกยอดจริงทับฉบับร่าง ครั้งเดียว
+     ไล่ทุกรอบที่ยังค้างเป็นฉบับร่าง ไม่ใช่แค่รอบที่กำลังดู — ไม่งั้นรอบที่
+     ปิดไว้แล้วไม่มีใครเปิดดูจะไม่ถูกล็อกสักที
+
+     ทำฝั่ง client ได้เพราะหลังพ้นวันตัด สิ่งเดียวที่ทำให้ยอดขยับคือ admin
+     ไปแก้ย้อนหลัง ซึ่งต้องเปิดแอปอยู่แล้ว — พอเปิดก็ล็อกให้ก่อน
+     (finalizePayrollPeriod เช็ค pending ซ้ำใน transaction กันเขียนซ้อน) */
+  const finalizingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const snap of Object.values(periodSnapshots)) {
+      if (!shouldFinalizeSnapshot(snap, today)) continue;
+      // กันยิงซ้ำระหว่างรอ snapshot ใหม่เดินทางกลับมาจาก Firestore
+      if (finalizingRef.current.has(snap.yearMonth)) continue;
+      finalizingRef.current.add(snap.yearMonth);
+      // ใช้ขอบรอบที่บันทึกไว้ตอนปิด ไม่ใช่ขอบของรอบที่กำลังดูอยู่
+      const range = { start: snap.start, end: snap.end };
+      onFinalizePeriod(
+        snap.yearMonth,
+        makeSnapshot(snap.yearMonth, range, settlementFor(range), {
+          closedOn: snap.closedOn,
+          pending: false,
+        }),
+      ).catch((err) => {
+        // ปล่อยให้ลองใหม่ตอน render ถัดไป (เช่นเน็ตหลุดชั่วคราว)
+        finalizingRef.current.delete(snap.yearMonth);
+        console.error("[LeaveSummaryPanel] ล็อกยอดรอบไม่สำเร็จ:", err);
+      });
+    }
+  }, [periodSnapshots, today, settlementFor, onFinalizePeriod]);
 
   const years: string[] = (
     [...new Set(allLeaves.map((lv) => lv.start.slice(0, 4)))] as string[]
@@ -258,7 +307,8 @@ export default function LeaveSummaryPanel({
           period={period}
           closed={periodClosed}
           plainMonth={periodIsPlainMonth}
-          lockedAt={snapshot?.closedAt}
+          lockedAt={locked ? snapshot?.closedAt : undefined}
+          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
           onClose={handleClosePeriod}
           onReopen={onReopenPeriod}
           showToast={showToast}
@@ -267,8 +317,9 @@ export default function LeaveSummaryPanel({
           rows={shown.rows}
           period={shown.range}
           totals={shown.totals}
-          locked={Boolean(snapshot)}
-          lockedAt={snapshot?.closedAt}
+          locked={locked}
+          lockedAt={locked ? snapshot?.closedAt : undefined}
+          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
           drift={drift}
           onRelock={handleRelockPeriod}
           showToast={showToast}

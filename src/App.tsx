@@ -123,6 +123,7 @@ export default function LeaveApp() {
     closePayrollPeriod,
     reopenPayrollPeriod,
     relockPayrollPeriod,
+    finalizePayrollPeriod,
   } = useAppData({
     authUid: authUser?.uid || "",
     isAdmin,
@@ -353,6 +354,7 @@ export default function LeaveApp() {
                       onClosePeriod={closePayrollPeriod}
                       onReopenPeriod={reopenPayrollPeriod}
                       onRelockPeriod={relockPayrollPeriod}
+                      onFinalizePeriod={finalizePayrollPeriod}
                       onUpdateStoreCalendar={updateStoreCalendarAction}
                       showToast={showToast}
                     />

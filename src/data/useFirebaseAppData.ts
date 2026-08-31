@@ -27,6 +27,7 @@ import {
 } from "../firebase/leaves";
 import {
   closePayrollPeriod as closePayrollPeriodDoc,
+  finalizePayrollPeriod as finalizePayrollPeriodDoc,
   relockPayrollPeriod as relockPayrollPeriodDoc,
   reopenPayrollPeriod as reopenPayrollPeriodDoc,
 } from "../firebase/payrollPeriods";
@@ -209,5 +210,6 @@ export default function useFirebaseAppData({
     closePayrollPeriod: closePayrollPeriodDoc,
     reopenPayrollPeriod: reopenPayrollPeriodDoc,
     relockPayrollPeriod: relockPayrollPeriodDoc,
+    finalizePayrollPeriod: finalizePayrollPeriodDoc,
   };
 }

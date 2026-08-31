@@ -5,7 +5,9 @@ import type { LeavePeriod } from "./payrollPeriod";
 import {
   buildSettlement,
   diffSettlement,
+  isSnapshotLocked,
   makeSnapshot,
+  shouldFinalizeSnapshot,
 } from "./periodSettlement";
 
 // มิ.ย. 2026: จ.08 → ศ.12 เป็นวันธรรมดาติดกัน 5 วัน · อา.07 / อา.14 เป็นวันอาทิตย์
@@ -101,7 +103,7 @@ describe("makeSnapshot", () => {
       "2026-06",
       JUNE,
       buildSettlement(employees, leaves, null, JUNE),
-      1_780_000_000_000,
+      { closedOn: "2026-06-30", pending: false, closedAt: 1_780_000_000_000 },
     );
     expect(snapshot.totals.deducted).toBe(2 * WEEKDAY_RATE);
     expect(snapshot.start).toBe("2026-06-01");
@@ -123,6 +125,7 @@ describe("diffSettlement", () => {
     "2026-06",
     JUNE,
     buildSettlement(employees, leaves, null, JUNE),
+    { closedOn: "2026-06-30", pending: false },
   );
 
   it("ไม่มีอะไรขยับ → ไม่มี drift", () => {
@@ -164,5 +167,58 @@ describe("diffSettlement", () => {
     expect(drift[0].id).toBe("b");
     expect(drift[0].liveNet).toBeUndefined();
     expect(drift[0].lockedNet).toBe(FULL_BONUS);
+  });
+});
+
+// ── หน่วงล็อกจนพ้นวันที่กดปิดรอบ (เที่ยงคืน) ──────────────────────
+describe("lock timing", () => {
+  const settlement = buildSettlement([emp("a", "เอ")], [], null, JUNE);
+
+  it("ตั้ง lockedFrom เป็นวันถัดจากวันที่กดปิดรอบ", () => {
+    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-27",
+      pending: true,
+    });
+    expect(draft.closedOn).toBe("2026-06-27");
+    expect(draft.lockedFrom).toBe("2026-06-28");
+    expect(draft.pending).toBe(true);
+  });
+
+  it("ข้ามเดือนได้ถูก — ปิดรอบวันสุดท้ายของเดือน", () => {
+    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-30",
+      pending: true,
+    });
+    expect(draft.lockedFrom).toBe("2026-07-01");
+  });
+
+  it("ฉบับร่างยังไม่ถือว่าล็อก", () => {
+    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-27",
+      pending: true,
+    });
+    expect(isSnapshotLocked(draft)).toBe(false);
+    expect(isSnapshotLocked({ ...draft, pending: false })).toBe(true);
+    expect(isSnapshotLocked(null)).toBe(false);
+  });
+
+  it("ยังไม่ถึงเวลาล็อกในวันที่กดปิดรอบ", () => {
+    const draft = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-27",
+      pending: true,
+    });
+    expect(shouldFinalizeSnapshot(draft, "2026-06-27")).toBe(false);
+    expect(shouldFinalizeSnapshot(draft, "2026-06-28")).toBe(true);
+    // เปิดแอปช้าไปหลายวันก็ยังต้องล็อก
+    expect(shouldFinalizeSnapshot(draft, "2026-07-15")).toBe(true);
+  });
+
+  it("ล็อกแล้วไม่ล็อกซ้ำ", () => {
+    const locked = makeSnapshot("2026-06", JUNE, settlement, {
+      closedOn: "2026-06-27",
+      pending: false,
+    });
+    expect(shouldFinalizeSnapshot(locked, "2026-07-15")).toBe(false);
+    expect(shouldFinalizeSnapshot(null, "2026-07-15")).toBe(false);
   });
 });
