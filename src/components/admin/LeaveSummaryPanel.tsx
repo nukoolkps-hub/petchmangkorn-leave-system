@@ -1,26 +1,31 @@
 import {
-  AlertOctagon as IconAlertOctagon,
   Briefcase as IconBriefcase,
   CalendarDays as IconCalendar,
   CalendarRange as IconCalendarRange,
   Cross as IconCross,
   Sun as IconSun,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
-import {
-  getLeaveDeduction,
-  hasPerfectAttendance,
-  leaveOverlapsMonth,
-} from "../../utils/leaveUtils";
+import { getLeaveDeduction, leaveOverlapsMonth } from "../../utils/leaveUtils";
 import {
   getPeriodRange,
   isCalendarMonth,
   isPeriodClosed,
+  type LeavePeriod,
   type PeriodCutoffs,
 } from "../../utils/payrollPeriod";
+import {
+  buildSettlement,
+  diffSettlement,
+  isSnapshotLocked,
+  makeSnapshot,
+  type PeriodSnapshot,
+  type PeriodSnapshots,
+  shouldFinalizeSnapshot,
+} from "../../utils/periodSettlement";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
@@ -105,8 +110,22 @@ interface LeaveSummaryPanelProps {
   storeCalendar: StoreCalendar;
   /** วันตัดรอบของเดือนที่ปิดไปแล้ว — กำหนดว่าแต่ละรอบกินวันไหนถึงวันไหน */
   periodCutoffs: PeriodCutoffs;
-  onClosePeriod: (yearMonth: string, cutoffYmd: string) => Promise<void>;
+  /** ยอดที่ล็อกไว้ตอนปิดรอบ — รอบที่ปิดแล้วโชว์ชุดนี้แทนยอดสด */
+  periodSnapshots: PeriodSnapshots;
+  onClosePeriod: (
+    yearMonth: string,
+    cutoffYmd: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   onReopenPeriod: (yearMonth: string) => Promise<void>;
+  onRelockPeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
+  onFinalizePeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   showToast: (msg: string) => void;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
    *  อื่น (LeaveListPanel) */
@@ -120,8 +139,11 @@ export default function LeaveSummaryPanel({
   employeeDirectory,
   storeCalendar,
   periodCutoffs,
+  periodSnapshots,
   onClosePeriod,
   onReopenPeriod,
+  onRelockPeriod,
+  onFinalizePeriod,
   showToast,
   selectedMonth,
   onSelectMonth,
@@ -160,38 +182,104 @@ export default function LeaveSummaryPanel({
   const periodClosed = isPeriodClosed(effectiveMonth, periodCutoffs);
   const periodIsPlainMonth = isCalendarMonth(effectiveMonth, period);
 
-  /* สรุปรายคนของทั้งรอบ — คิดแยกทีละคนแล้วค่อยรวม เพราะโควต้า/โบนัส
-     เป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน · เรียงคนถูกหักมากสุดขึ้นก่อน */
-  const rows = useMemo(() => {
-    return employeeDirectory
-      .map((emp) => {
-        const empLeaves = allLeaves.filter(
-          (lv) => lv.employeeId === emp.id && leaveOverlapsMonth(lv, period),
-        );
-        const deduction = getLeaveDeduction(empLeaves, storeCalendar, period);
-        const bonus = hasPerfectAttendance(empLeaves, storeCalendar, period)
-          ? BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS
-          : 0;
-        return {
-          id: emp.id,
-          name: emp.nickname || emp.name,
-          deduction,
-          bonus,
-          net: bonus - deduction.total,
-        };
-      })
-      .sort((a, b) => a.net - b.net);
-  }, [allLeaves, employeeDirectory, storeCalendar, period]);
-
-  const periodTotals = useMemo(
-    () => ({
-      deducted: rows.reduce((sum, r) => sum + r.deduction.total, 0),
-      bonus: rows.reduce((sum, r) => sum + r.bonus, 0),
-      net: rows.reduce((sum, r) => sum + r.net, 0),
-      bonusNames: rows.filter((r) => r.bonus > 0).map((r) => r.name),
-    }),
-    [rows],
+  /* ยอด "สด" ของรอบที่กำลังดู — คิดจากใบลา + ปฏิทินร้าน ณ ตอนนี้ */
+  const live = useMemo(
+    () => buildSettlement(employeeDirectory, allLeaves, storeCalendar, period),
+    [allLeaves, employeeDirectory, storeCalendar, period],
   );
+
+  /* ─── ยอดล็อกหรือยัง ────────────────────────────────────────────
+     กดปิดรอบแล้วยอด "ยังไม่ล็อกทันที" — วันที่กดยังแก้ใบลา/ปฏิทินร้านได้
+     ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก               */
+  const snapshot = periodSnapshots[effectiveMonth];
+  const locked = isSnapshotLocked(snapshot);
+
+  // ช่วงวันที่โชว์คู่กับยอด ต้องเป็นช่วงที่ "ยอดชุดนั้น" คิดมา — ไม่งั้นถ้า
+  // ขอบรอบขยับทีหลัง หัวข้อความที่คัดลอกไปจะไม่ตรงกับตัวเลขข้างใต้
+  const shown =
+    locked && snapshot
+      ? {
+          rows: snapshot.rows,
+          totals: snapshot.totals,
+          range: { start: snapshot.start, end: snapshot.end },
+        }
+      : { ...live, range: period };
+  const drift = useMemo(
+    () => (locked && snapshot ? diffSettlement(snapshot, live) : []),
+    [locked, snapshot, live],
+  );
+
+  /* คิดยอดของ "ช่วงวันไหนก็ได้" — ใช้ตอนปิดรอบและตอนล็อกยอดย้อนหลัง
+     ⚠️ ตอนปิดรอบต้องส่งขอบรอบ "หลังปิด" (end = วันตัดที่เลือก) ไม่ใช่ขอบ
+     ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด — ไม่งั้นวันลาหลังวันตัด
+     จะถูกนับติดมาในรอบที่จ่ายไปแล้ว                                      */
+  const settlementFor = useCallback(
+    (range: LeavePeriod) =>
+      buildSettlement(employeeDirectory, allLeaves, storeCalendar, range),
+    [employeeDirectory, allLeaves, storeCalendar],
+  );
+
+  const handleClosePeriod = useCallback(
+    async (yearMonth: string, cutoffYmd: string) => {
+      const closedRange = {
+        start: getPeriodRange(yearMonth, periodCutoffs).start,
+        end: cutoffYmd,
+      };
+      // pending: true — ยอดยังไม่ล็อกจนกว่าจะพ้นวันนี้ ชุดนี้เป็นแค่ฉบับร่าง
+      // เผื่อไว้กรณีไม่มีใครเปิดแอปอีกเลย
+      await onClosePeriod(
+        yearMonth,
+        cutoffYmd,
+        makeSnapshot(yearMonth, closedRange, settlementFor(closedRange), {
+          closedOn: today,
+          pending: true,
+        }),
+      );
+    },
+    [onClosePeriod, periodCutoffs, settlementFor, today],
+  );
+
+  const handleRelockPeriod = useCallback(
+    () =>
+      onRelockPeriod(
+        effectiveMonth,
+        makeSnapshot(effectiveMonth, period, live, {
+          closedOn: today,
+          pending: false,
+        }),
+      ),
+    [onRelockPeriod, effectiveMonth, period, live, today],
+  );
+
+  /* พ้นวันที่กดปิดรอบแล้ว → ล็อกยอดจริงทับฉบับร่าง ครั้งเดียว
+     ไล่ทุกรอบที่ยังค้างเป็นฉบับร่าง ไม่ใช่แค่รอบที่กำลังดู — ไม่งั้นรอบที่
+     ปิดไว้แล้วไม่มีใครเปิดดูจะไม่ถูกล็อกสักที
+
+     ทำฝั่ง client ได้เพราะหลังพ้นวันตัด สิ่งเดียวที่ทำให้ยอดขยับคือ admin
+     ไปแก้ย้อนหลัง ซึ่งต้องเปิดแอปอยู่แล้ว — พอเปิดก็ล็อกให้ก่อน
+     (finalizePayrollPeriod เช็ค pending ซ้ำใน transaction กันเขียนซ้อน) */
+  const finalizingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const snap of Object.values(periodSnapshots)) {
+      if (!shouldFinalizeSnapshot(snap, today)) continue;
+      // กันยิงซ้ำระหว่างรอ snapshot ใหม่เดินทางกลับมาจาก Firestore
+      if (finalizingRef.current.has(snap.yearMonth)) continue;
+      finalizingRef.current.add(snap.yearMonth);
+      // ใช้ขอบรอบที่บันทึกไว้ตอนปิด ไม่ใช่ขอบของรอบที่กำลังดูอยู่
+      const range = { start: snap.start, end: snap.end };
+      onFinalizePeriod(
+        snap.yearMonth,
+        makeSnapshot(snap.yearMonth, range, settlementFor(range), {
+          closedOn: snap.closedOn,
+          pending: false,
+        }),
+      ).catch((err) => {
+        // ปล่อยให้ลองใหม่ตอน render ถัดไป (เช่นเน็ตหลุดชั่วคราว)
+        finalizingRef.current.delete(snap.yearMonth);
+        console.error("[LeaveSummaryPanel] ล็อกยอดรอบไม่สำเร็จ:", err);
+      });
+    }
+  }, [periodSnapshots, today, settlementFor, onFinalizePeriod]);
 
   const years: string[] = (
     [...new Set(allLeaves.map((lv) => lv.start.slice(0, 4)))] as string[]
@@ -219,14 +307,21 @@ export default function LeaveSummaryPanel({
           period={period}
           closed={periodClosed}
           plainMonth={periodIsPlainMonth}
-          onClose={onClosePeriod}
+          lockedAt={locked ? snapshot?.closedAt : undefined}
+          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
+          onClose={handleClosePeriod}
           onReopen={onReopenPeriod}
           showToast={showToast}
         />
         <PeriodSettlementTable
-          rows={rows}
-          period={period}
-          totals={periodTotals}
+          rows={shown.rows}
+          period={shown.range}
+          totals={shown.totals}
+          locked={locked}
+          lockedAt={locked ? snapshot?.closedAt : undefined}
+          lockPendingFrom={snapshot?.pending ? snapshot.lockedFrom : undefined}
+          drift={drift}
+          onRelock={handleRelockPeriod}
           showToast={showToast}
         />
         {employeeDirectory.length === 0 && (
@@ -254,21 +349,19 @@ export default function LeaveSummaryPanel({
               const sickDays = monthLeaves
                 .filter((lv) => lv.type === "sick")
                 .reduce((s, lv) => s + lv.days, 0);
-              // bug fix: เดิม `totalTimes > 2` เปรียบเทียบจำนวน "ใบลา" ไม่ใช่
-              // จำนวน "วัน" → 1 ใบลา 4 วันธรรมดา ก็ไม่แดง · ที่ถูกต้องคือ
-              // เปรียบเทียบจำนวน "วันธรรมดา" กับโควต้าใน BUSINESS_RULES
-              const overQuota = weekdays > BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
-              // ยอดหักของคนนี้ในเดือนนี้ — clamp ด้วย effectiveMonth เพื่อให้
-              // ใบลาคร่อมเดือนคิดเฉพาะวันของเดือนที่กำลังดู
+              // ยอดหักของคนนี้ในรอบนี้ — clamp ด้วย period เพื่อให้ใบลา
+              // คร่อมรอบคิดเฉพาะวันของรอบที่กำลังดู
               const deduction = getLeaveDeduction(
                 monthLeaves,
                 storeCalendar,
                 period,
               );
+              // แดงเมื่อมียอดหักจริง (ลาในโควต้ายังไม่ถูกหัก จึงไม่แดง)
+              const hasDeduction = deduction.total > 0;
               return (
                 <div
                   key={empId}
-                  className={`px-3.5 py-3 rounded-xl border ${overQuota ? "bg-red-lt border-[#C0392B30]" : "bg-cream border-bdr"}`}
+                  className={`px-3.5 py-3 rounded-xl border ${hasDeduction ? "bg-red-lt border-[#C0392B30]" : "bg-cream border-bdr"}`}
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <AvatarCircle
@@ -287,7 +380,7 @@ export default function LeaveSummaryPanel({
                     </div>
                     <div className="text-right">
                       <div
-                        className={`font-extrabold text-lg ${overQuota ? "text-red" : "text-maroon"}`}
+                        className={`font-extrabold text-lg ${hasDeduction ? "text-red" : "text-maroon"}`}
                       >
                         {totalDays}{" "}
                         <span className="text-xs font-medium text-txt-soft">
@@ -298,12 +391,6 @@ export default function LeaveSummaryPanel({
                         weekdays={weekdays}
                         sundays={sundays}
                       />
-                      {overQuota && (
-                        <div className="text-xs text-red font-bold inline-flex items-center gap-1 mt-0.5">
-                          <IconAlertOctagon size={11} strokeWidth={2.4} />
-                          เกินโควต้า
-                        </div>
-                      )}
                       <DeductionSummary
                         deduction={deduction}
                         variant="compact"

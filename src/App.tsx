@@ -110,6 +110,7 @@ export default function LeaveApp() {
     employeeDirectory,
     storeCalendar,
     periodCutoffs,
+    periodSnapshots,
     loading,
     leavesLoading,
     error,
@@ -121,6 +122,8 @@ export default function LeaveApp() {
     updateStoreCalendar: updateStoreCalendarAction,
     closePayrollPeriod,
     reopenPayrollPeriod,
+    relockPayrollPeriod,
+    finalizePayrollPeriod,
   } = useAppData({
     authUid: authUser?.uid || "",
     isAdmin,
@@ -347,8 +350,11 @@ export default function LeaveApp() {
                       onReorderEmployees={reorderEmployees}
                       storeCalendar={storeCalendar}
                       periodCutoffs={periodCutoffs}
+                      periodSnapshots={periodSnapshots}
                       onClosePeriod={closePayrollPeriod}
                       onReopenPeriod={reopenPayrollPeriod}
+                      onRelockPeriod={relockPayrollPeriod}
+                      onFinalizePeriod={finalizePayrollPeriod}
                       onUpdateStoreCalendar={updateStoreCalendarAction}
                       showToast={showToast}
                     />

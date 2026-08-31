@@ -430,7 +430,7 @@ export default function StoreCalendarPanel({
                 <IconX size={14} strokeWidth={2.2} />
               </button>
             </div>
-            {/* warning: ถ้ามีใบลาในเสาร์ที่เลือก → จะกลายเป็นวันทำงาน · ใบลานับโควต้า */}
+            {/* warning: ถ้ามีใบลาในเสาร์ที่เลือก → จะกลายเป็นวันทำงาน · ใบลาถูกหัก */}
             {satPick &&
               (() => {
                 const leaves = leavesOnDate(satPick, allLeaves);
@@ -444,7 +444,7 @@ export default function StoreCalendarPanel({
                     <div>
                       <b>มีใบลา {names.length} คนวันนี้</b> ({names.join(", ")})
                       <br />
-                      หลังเปิดเสาร์นี้ ใบลาจะ <b>นับเข้าโควต้า</b> (เหมือนวันธรรมดา)
+                      หลังเปิดเสาร์นี้ ใบลาจะ <b>ถูกหักเงิน</b> (เหมือนวันธรรมดา)
                     </div>
                   </div>
                 );
@@ -602,7 +602,7 @@ export default function StoreCalendarPanel({
                 </button>
               </div>
             </div>
-            {/* warning: ถ้ามีใบลาในช่วงที่ปิด → ใบลายังอยู่แต่ไม่นับโควต้า */}
+            {/* warning: ถ้ามีใบลาในช่วงที่ปิด → ใบลายังอยู่แต่ไม่ถูกหัก */}
             {wdStart &&
               wdEnd &&
               (() => {
@@ -622,7 +622,7 @@ export default function StoreCalendarPanel({
                     <div>
                       <b>มีใบลา {names.length} คนในช่วงนี้</b> ({names.join(", ")})
                       <br />
-                      หลังปิด ใบลายังอยู่ในระบบ แต่ <b>ไม่นับโควต้า · ไม่หักเงิน</b>{" "}
+                      หลังปิด ใบลายังอยู่ในระบบ แต่ <b>ไม่นับ · ไม่หักเงิน</b>{" "}
                       (ระบบคืนสิทธิ์ลาให้อัตโนมัติ)
                     </div>
                   </div>

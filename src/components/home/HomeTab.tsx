@@ -7,11 +7,11 @@ import {
   ClipboardList as IconClipboardList,
   Wallet as IconWallet,
 } from "lucide-react";
-import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
+import { BUSINESS_RULES, LEAVE_TYPES, MAX_LEAVE_BONUS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { dateRange, fmtShort } from "../../utils/dateUtils";
 import {
-  countWeekdayLeaves,
+  getCountedLeaveDays,
   getMonthlySettlement,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
@@ -53,40 +53,43 @@ export default function HomeTab({
   const period = getPeriodRange(yearMonth, periodCutoffs);
   const periodIsPlainMonth = isCalendarMonth(yearMonth, period);
 
-  /* ─── Monthly quota — count weekday days (Mon-Fri) ไม่ใช่จำนวนใบลา
-       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักทันที ไม่นับโควต้า */
-  const monthLeavesForQuota = profile
+  /* ─── ยอดเงินของรอบนี้ ────────────────────────────────────────
+     นับเป็น "วัน" ไม่ใช่จำนวนใบลา (1 ใบลา 4 วันธรรมดา = 4 วัน)         */
+  const monthLeaves = profile
     ? allLeaves.filter(
         (lv) => lv.employeeId === profile.id && leaveOverlapsMonth(lv, period),
       )
     : [];
-  const usedThisMonth = countWeekdayLeaves(
-    monthLeavesForQuota,
+  const { deduction, bonusDetail, net } = getMonthlySettlement(
+    monthLeaves,
     storeCalendar,
     period,
   );
+  /* วันลา "ดิบ" สำหรับโชว์ — ไม่ใช่ deduction.weekdayDays ซึ่งหักโควต้า
+     ออกไปแล้ว (ลา 1 วันในโควต้า → deduction.weekdayDays = 0 แต่พนักงาน
+     ต้องเห็นว่าลาไปแล้ว 1 วัน และโบนัสหลุดไปแล้ว)                      */
+  const { weekdays: weekdayDays, sundays: sundayDays } = getCountedLeaveDays(
+    monthLeaves,
+    storeCalendar,
+    period,
+  );
+  const totalLeaveDays = weekdayDays + sundayDays;
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
-  const remaining = quota - usedThisMonth;
-  // ยอดสุทธิเดือนนี้ — ค่าหัก (วันธรรมดาเกินโควต้า + วันอาทิตย์) และโบนัสไม่ลา
-  const { deduction, bonus } = getMonthlySettlement(
-    monthLeavesForQuota,
-    storeCalendar,
-    period,
-  );
-  const overQuotaDeduction = deduction.total > 0;
+  const freeLeft = Math.max(0, quota - weekdayDays);
+  const hasDeduction = deduction.total > 0;
 
   return (
     <>
-      {/* Monthly quota card */}
+      {/* สรุปการลา + ยอดเงินของรอบนี้ */}
       <div
-        className={`relative overflow-hidden bg-white rounded-[18px] px-5 py-4.5 shadow-[0_2px_14px_rgba(90,30,10,0.08)] mb-3 border-[1.5px] ${overQuotaDeduction ? "border-[#C0392B50]" : "border-bdr"}`}
+        className={`relative overflow-hidden bg-white rounded-[18px] px-5 py-4.5 shadow-[0_2px_14px_rgba(90,30,10,0.08)] mb-3 border-[1.5px] ${hasDeduction ? "border-[#C0392B50]" : "border-bdr"}`}
       >
         <MemphisCornerSticker position="tr" tone="gold" />
         {/* title row */}
         <div className="relative flex items-center justify-between mb-3.5">
           <div>
             <div className="font-bold text-maroon text-base">
-              {periodIsPlainMonth ? "โควต้าการลาเดือนนี้" : "โควต้าการลารอบนี้"}
+              {periodIsPlainMonth ? "การลาเดือนนี้" : "การลารอบนี้"}
             </div>
             <div className="text-sm text-txt-soft mt-0.5">
               {periodIsPlainMonth ? (
@@ -104,52 +107,29 @@ export default function HomeTab({
             </div>
           </div>
           <div className="text-right">
-            <div className="text-sm text-txt-soft">ใช้ไปแล้ว</div>
+            <div className="text-sm text-txt-soft">
+              {periodIsPlainMonth ? "สุทธิเดือนนี้" : "สุทธิรอบนี้"}
+            </div>
             <div
-              className={`text-2xl font-extrabold leading-none ${overQuotaDeduction ? "text-red" : usedThisMonth >= quota ? "text-amber" : "text-maroon"}`}
+              className={`text-2xl font-extrabold leading-none ${
+                net > 0 ? "text-green" : net < 0 ? "text-red" : "text-maroon"
+              }`}
             >
               <span
-                key={usedThisMonth}
+                key={net}
                 className="inline-block animate-[valuePop_0.28s_ease-out]"
               >
-                {usedThisMonth}
+                {net > 0 ? "+" : ""}
+                {net.toLocaleString("th-TH")}
               </span>
-              <span className="text-sm text-txt-soft font-medium">
-                /{quota} วัน
-              </span>
+              <span className="text-sm text-txt-soft font-medium"> บาท</span>
             </div>
           </div>
         </div>
 
-        {/* progress dots */}
-        <div className="flex gap-2.5 mb-3.5">
-          {Array.from({ length: quota }).map((_, i) => {
-            const filled = i < usedThisMonth;
-            return (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  height: 10,
-                  borderRadius: 6,
-                  background: filled
-                    ? overQuotaDeduction
-                      ? COLORS.red
-                      : `linear-gradient(90deg,${COLORS.gold},${COLORS.goldLight})`
-                    : COLORS.creamDark,
-                  boxShadow: filled
-                    ? `0 2px 6px ${overQuotaDeduction ? COLORS.red : COLORS.gold}50`
-                    : "none",
-                  transition: "all 0.3s",
-                }}
-              />
-            );
-          })}
-        </div>
-
-        {/* status chips */}
+        {/* status chips — วันลาที่นับได้ในรอบนี้ แยกตามอัตรา */}
         <div className="flex gap-2 flex-wrap">
-          {remaining > 0 && (
+          {totalLeaveDays === 0 && (
             <div className="bg-green-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
               <IconCircleCheck
                 size={14}
@@ -157,11 +137,48 @@ export default function HomeTab({
                 className="text-green"
               />
               <span className="text-sm font-semibold text-green">
-                ลาได้อีก {remaining} วัน
+                ยังไม่ได้ลาเลยในรอบนี้
               </span>
             </div>
           )}
-          {usedThisMonth === quota && (
+          {weekdayDays > 0 &&
+            (deduction.weekdayDays > 0 ? (
+              <div className="bg-red-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
+                <IconAlertOctagon
+                  size={14}
+                  strokeWidth={2.4}
+                  className="text-red"
+                />
+                <span className="text-sm font-semibold text-red">
+                  ลาวันธรรมดา {weekdayDays} วัน — เกินโควต้า {deduction.weekdayDays}{" "}
+                  วัน
+                </span>
+              </div>
+            ) : (
+              <div className="bg-cream rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5 border border-bdr">
+                <IconClipboardList
+                  size={14}
+                  strokeWidth={2.4}
+                  className="text-txt-mid"
+                />
+                <span className="text-sm font-semibold text-txt-mid">
+                  ลาวันธรรมดา {weekdayDays} วัน (ในโควต้า ไม่ถูกหัก)
+                </span>
+              </div>
+            ))}
+          {freeLeft > 0 && totalLeaveDays > 0 && (
+            <div className="bg-green-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
+              <IconCircleCheck
+                size={14}
+                strokeWidth={2.4}
+                className="text-green"
+              />
+              <span className="text-sm font-semibold text-green">
+                ลาวันธรรมดาฟรีได้อีก {freeLeft} วัน
+              </span>
+            </div>
+          )}
+          {sundayDays > 0 && (
             <div className="bg-amber-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
               <IconAlertTriangle
                 size={14}
@@ -169,35 +186,15 @@ export default function HomeTab({
                 className="text-amber"
               />
               <span className="text-sm font-semibold text-amber">
-                ใช้ครบโควต้าแล้ว
+                ลาวันอาทิตย์ {sundayDays} วัน
               </span>
             </div>
           )}
-          {usedThisMonth > quota && (
-            <div className="bg-red-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
-              <IconAlertOctagon
-                size={14}
-                strokeWidth={2.4}
-                className="text-red"
-              />
-              <span className="text-sm font-semibold text-red">
-                เกินโควต้า {usedThisMonth - quota} วัน
-              </span>
-            </div>
-          )}
-          <div className="bg-cream rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5 border border-bdr">
-            <IconClipboardList
-              size={14}
-              strokeWidth={2.4}
-              className="text-txt-mid"
-            />
-            <span className="text-sm text-txt-mid">
-              ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
-            </span>
-          </div>
           <div className="w-full text-xs text-txt-soft mt-1">
-            นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
-            บาททันที (ไม่กินโควต้า)
+            วันธรรมดา: ฟรี {quota} วัน/รอบ · เกินหัก{" "}
+            {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท/วัน · วันอาทิตย์หัก{" "}
+            {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน (ไม่ใช้โควต้า) ·
+            วันที่ร้านปิดไม่นับ
           </div>
         </div>
 
@@ -207,11 +204,30 @@ export default function HomeTab({
           title={periodIsPlainMonth ? "ยอดถูกหักเดือนนี้" : "ยอดถูกหักรอบนี้"}
         />
 
-        {/* โบนัสไม่ลา — เขียวถ้ายังสะอาด · เทาถ้าหลุดไปแล้ว */}
-        <BonusNote bonus={bonus} showLost={deduction.total === 0} />
+        {/* โบนัส — เขียวถ้ายังได้อยู่ (ก้อนใดก้อนหนึ่ง) · เทาถ้าหลุดหมด */}
+        <BonusNote bonus={bonusDetail} showLost />
 
-        {/* เตือนล่วงหน้าเมื่อโควต้าหมดแล้วแต่ยังไม่มียอดหัก */}
-        {usedThisMonth >= quota && deduction.total === 0 && (
+        {/* เตือนล่วงหน้าตอนยังสะอาด — วันลาวันแรกไม่ถูกหักก็จริง แต่แพงที่สุด
+            เพราะทำให้เสียโบนัสทั้งก้อน */}
+        {totalLeaveDays === 0 && (
+          <div className="mt-3 bg-linear-to-br from-red/6 to-red/9 rounded-xl px-3.5 py-2.5 border border-red/19 flex items-center gap-2.5">
+            <IconWallet
+              size={22}
+              strokeWidth={2.2}
+              className="text-red shrink-0"
+            />
+            <div className="text-sm text-red font-semibold leading-relaxed">
+              ลาวันธรรมดา 1 วัน = <span className="font-bold">ไม่ถูกหัก</span>{" "}
+              (อยู่ในโควต้า) แต่{" "}
+              <span className="font-bold">
+                เสียโบนัส {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* เตือนเมื่อใช้โควต้าครบแล้วแต่ยังไม่มียอดหัก — วันธรรมดาวันถัดไปหัก */}
+        {weekdayDays >= quota && deduction.weekdayDays === 0 && (
           <div className="mt-3 bg-linear-to-br from-red/6 to-red/9 rounded-xl px-3.5 py-2.5 border border-red/19 flex items-center gap-2.5">
             <IconWallet
               size={22}

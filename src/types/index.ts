@@ -1,6 +1,10 @@
 /* ─── Domain types — ระบบการลา ห้างทองเพชรมังกร ────────────────── */
 
 import type { PeriodCutoffs } from "../utils/payrollPeriod";
+import type {
+  PeriodSnapshot,
+  PeriodSnapshots,
+} from "../utils/periodSettlement";
 
 export type LeaveKind = "personal" | "sick";
 export type LeaveBalance = Record<LeaveKind, number>;
@@ -60,6 +64,8 @@ export interface AppData {
   storeCalendar: StoreCalendar;
   /** วันตัดรอบจ่ายของแต่ละเดือนที่ admin ปิดไปแล้ว (YYYY-MM → YYYY-MM-DD) */
   periodCutoffs: PeriodCutoffs;
+  /** ยอดที่ล็อกไว้ตอนกดปิดรอบ — รอบที่ปิดแล้วใช้ตัวเลขชุดนี้ ไม่คิดสด */
+  periodSnapshots: PeriodSnapshots;
   loading: boolean;
   leavesLoading: boolean;
   error: Error | null;
@@ -71,6 +77,20 @@ export interface AppData {
   deleteEmployee: (id: string) => Promise<void>;
   reorderEmployees: (orderedIds: string[]) => Promise<void>;
   updateStoreCalendar: (fields: Partial<StoreCalendar>) => Promise<void>;
-  closePayrollPeriod: (yearMonth: string, cutoffYmd: string) => Promise<void>;
+  closePayrollPeriod: (
+    yearMonth: string,
+    cutoffYmd: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   reopenPayrollPeriod: (yearMonth: string) => Promise<void>;
+  /** ล็อกยอดใหม่ทับของเดิม (วันตัดคงเดิม) — ใช้ตอนยอดสดไม่ตรงกับที่ล็อกไว้ */
+  relockPayrollPeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
+  /** ล็อกยอดจริงหลังพ้นวันที่กดปิดรอบ — เขียนทับฉบับร่างครั้งเดียว */
+  finalizePayrollPeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
 }
