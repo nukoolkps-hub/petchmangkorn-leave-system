@@ -107,6 +107,9 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `src/components/admin/AdminPanel.tsx` | Admin router — render section components |
 | `src/components/admin/EmployeeAdminPanel.tsx` + `EmployeeEditModal.tsx` | จัดการพนักงาน: list (ลากเรียง) + ฟอร์มแก้ไข |
 | `src/components/admin/LeaveSummaryPanel.tsx` / `LeaveListPanel.tsx` | สรุปลา / รายการลา |
+| `src/components/admin/PayrollPeriodBar.tsx` | แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ |
+| `src/components/admin/PeriodSettlementTable.tsx` | ตารางสรุปเงินทั้งรอบ (ทุกคน) + ปุ่มคัดลอก |
+| `src/utils/payrollPeriod.ts` | **Single source** ของขอบเขตรอบจ่าย (มี unit test) |
 | `src/components/admin/StoreCalendarPanel.tsx` | วันเปิด-ปิดร้าน (cascade ลบใบลาในวันที่ปิด) |
 | `src/components/home/TeamCalendar.tsx` | ปฏิทินทีม — ใช้ทั้งหน้าแรกพนักงานและ admin |
 | `src/types/index.ts` | Domain types ทั้งหมด |
@@ -133,6 +136,8 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | ประเภทการลา | ลากิจ (`personal`) · ลาป่วย (`sick`) |
 | หักวันธรรมดาที่เกินโควต้า | 300 บาท/วัน |
 | หักวันอาทิตย์ (ร้านเปิด) | 500 บาท/วัน — หักทันที ไม่ใช้โควต้า |
+| อัตราผ่อนผัน: อาทิตย์ 1 วัน + ไม่ลาวันธรรมดาเลย | 200 บาท (แทน 500) |
+| โบนัสไม่มีวันลาที่นับเลยทั้งเดือน | +1,000 บาท |
 
 ค่าทั้งหมดอยู่ใน `src/constants.ts` → `BUSINESS_RULES`
 
@@ -150,14 +155,30 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | อาทิตย์ (ร้านเปิด) | × `SUNDAY_LEAVE_DEDUCTION` ทุกวัน ไม่ใช้โควต้า |
 | วันร้านปิดทุกกรณี | ไม่นับ ไม่หัก |
 
+**เงื่อนไขพิเศษรายเดือน 2 ข้อ** — ตัดสินจาก "ทั้งเดือน" ไม่ใช่รายวัน:
+
+1. **อัตราผ่อนผันอาทิตย์วันเดียว** — ลาอาทิตย์ **1 วันพอดี** และ **ไม่ลาวันธรรมดา
+   เลย** (วันในโควต้าก็นับว่าลา) → หัก `SINGLE_SUNDAY_ONLY_DEDUCTION` แทน
+   · ลาอาทิตย์ 2 วันขึ้นไป → กลับไปคิดเต็มอัตราทุกวัน ไม่ใช่วันแรกถูกวันหลังแพง
+2. **โบนัสไม่ลา** — เดือนไหนไม่มีวันลาที่นับเลย (ทั้งธรรมดาและอาทิตย์)
+   → `PERFECT_ATTENDANCE_BONUS` · ลาวันร้านปิดไม่ทำให้เสียโบนัส ·
+   ลาแค่วันเดียวแม้อยู่ในโควต้าก็หลุดโบนัสทันที
+
 **Single source: `src/utils/leaveUtils.ts`** — ห้ามคูณอัตราเองใน component
 
 - `getLeaveDeduction(leaves, calendar, yearMonth)` → ยอดหักของชุดใบลา
-  (ใส่ `yearMonth` เสมอเมื่อคิดรายเดือน เพื่อ clamp ใบลาคร่อมเดือน)
-- `getAdditionalDeduction(existing, candidate, calendar)` → ยอดที่ใบลา
+  (ใส่ `yearMonth` เสมอเมื่อคิดรายเดือน เพื่อ clamp ใบลาคร่อมเดือน ·
+  กฎผ่อนผันอาทิตย์วันเดียวรวมอยู่ในนี้แล้ว)
+- `hasPerfectAttendance(leaves, calendar, yearMonth)` → เดือนนั้นได้โบนัสไหม
+- `getMonthlySettlement(leaves, calendar, yearMonth)` → `{ deduction, bonus, net }`
+  ยอดสุทธิของเดือน (`net > 0` = ได้เงินเพิ่ม · `< 0` = ถูกหัก)
+- `getAdditionalDeduction(existing, candidate, calendar)` → ยอดหักที่ใบลา
   **ใบใหม่** จะเพิ่ม คิดเป็นส่วนต่างจากใบเดิม (โควต้าเป็นของทั้งเดือน)
-- render ผ่าน `<DeductionSummary />` (`src/components/shared/`) ทุกที่
-  เพื่อให้ถ้อยคำ/ตัวเลขตรงกัน
+- `getRequestImpact(existing, candidate, calendar)` → `{ deduction, bonusLost,
+  total }` ผลกระทบเป็นเงินทั้งหมดของใบใหม่ — **ใช้ตัวนี้ในฟอร์มยื่นลา**
+  เพราะใบแรกของเดือนอาจไม่ถูกหักเลยแต่ทำให้เสียโบนัส 1,000
+- render ผ่าน `<DeductionSummary />` + `<BonusNote />`
+  (`src/components/shared/`) ทุกที่ เพื่อให้ถ้อยคำ/ตัวเลขตรงกัน
 
 แก้อัตราหรือโควต้า → แก้ที่ `BUSINESS_RULES` ที่เดียว แล้วรัน `npm test`
 (เทสต์ล็อก "จำนวนวันที่ถูกหัก" ไว้ ไม่ได้ hardcode ตัวเลขบาท)
@@ -168,6 +189,35 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 
 **ลาวันอาทิตย์ต้องติ๊กยืนยัน** — `SubmitLeaveConfirmModal` disable ปุ่มส่ง
 จนกว่าจะติ๊กรับทราบว่าจะถูกหัก (กันกดผ่านโดยไม่ทันอ่าน)
+
+### รอบจ่ายเงินเดือน (payrollPeriods)
+
+ร้านคิดเงินเดือน **ก่อนสิ้นเดือน** ได้ — วันตัดไม่คงที่ (อยู่ช่วง 25-31)
+admin เลือกวันแล้วกด **"ปิดรอบ"** ที่ `/admin → การลา → สรุปลา`
+
+```
+รอบ ส.ค. = 28 ก.ค. ──────► 27 ส.ค.   (ปิดรอบวันที่ 27)
+รอบ ก.ย. = 28 ส.ค. ──────► 30 ก.ย.   (ยังไม่ปิด = ใช้สิ้นเดือนชั่วคราว)
+```
+
+- doc เดียว `/config/payrollPeriods` → `{ cutoffs: { "2026-08": "2026-08-27" } }`
+  มีเฉพาะเดือนที่ปิดแล้ว
+- **วันลาหลังวันตัดยกไปรอบถัดไปอัตโนมัติ** — ไม่ต้องทำอะไรเพิ่ม
+- โควต้า/ค่าหัก/โบนัส ผูกกับ **รอบ** ไม่ใช่เดือนปฏิทิน
+- เปิดรอบกลับได้ถ้ากดผิดวัน (ปุ่ม "เปิดรอบกลับ")
+
+**Single source: `src/utils/payrollPeriod.ts`**
+
+- `getPeriodRange(yearMonth, cutoffs)` → `{ start, end }` ของรอบนั้น
+- `periodKeyForDate(ymd, cutoffs)` → วันนี้ตกรอบไหน (คืน key `YYYY-MM`)
+- `periodKeysInRange(start, end, cutoffs)` → ใบลาคร่อมกี่รอบ
+
+ฟังก์ชันใน `leaveUtils` รับ arg สุดท้ายเป็น `PeriodArg` = `"YYYY-MM"`
+(เดือนปฏิทินเต็มเดือน) **หรือ** `LeavePeriod` (ช่วงวันของรอบ) — call site
+ที่ยังส่งเดือนอยู่จึงไม่พัง
+
+⚠️ ยอดคำนวณสดจากใบลาทุกครั้ง **ไม่ได้ snapshot** — ปิดรอบแล้วถ้าไปแก้
+ปฏิทินร้านย้อนหลัง ยอดรอบนั้นจะขยับตาม (ถ้าต้องล็อกยอดต้องทำ snapshot เพิ่ม)
 
 ### ปฏิทินเปิด-ปิดร้าน (storeCalendar)
 

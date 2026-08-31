@@ -9,13 +9,20 @@ import {
 } from "lucide-react";
 import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
-import { dateRange } from "../../utils/dateUtils";
+import { dateRange, fmtShort } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
-  getLeaveDeduction,
+  getMonthlySettlement,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  isCalendarMonth,
+  type PeriodCutoffs,
+  periodKeyForDate,
+} from "../../utils/payrollPeriod";
 import { isStoreClosed } from "../../utils/storeCalendar";
+import BonusNote from "../shared/BonusNote";
 import DeductionSummary from "../shared/DeductionSummary";
 import { MemphisCornerSticker } from "../shared/MemphisPattern";
 import TeamCalendar from "./TeamCalendar";
@@ -27,6 +34,7 @@ interface HomeTabProps {
   /** employee record ของผู้ใช้ปัจจุบัน (จาก useProfile) */
   currentEmployee?: Employee | null;
   storeCalendar?: StoreCalendar | null;
+  periodCutoffs?: PeriodCutoffs;
 }
 
 export default function HomeTab({
@@ -35,30 +43,35 @@ export default function HomeTab({
   employeeDirectory,
   currentEmployee,
   storeCalendar,
+  periodCutoffs,
 }: HomeTabProps) {
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const todayYmdStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  /* รอบที่ "วันนี้" ตกอยู่ — ถ้า admin ปิดรอบเดือนนี้ไปแล้วและวันนี้เลย
+     วันตัดมา จะกลายเป็นรอบของเดือนถัดไปโดยอัตโนมัติ */
+  const yearMonth = periodKeyForDate(todayYmdStr, periodCutoffs);
+  const period = getPeriodRange(yearMonth, periodCutoffs);
+  const periodIsPlainMonth = isCalendarMonth(yearMonth, period);
 
   /* ─── Monthly quota — count weekday days (Mon-Fri) ไม่ใช่จำนวนใบลา
        1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักทันที ไม่นับโควต้า */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
-        (lv) =>
-          lv.employeeId === profile.id && leaveOverlapsMonth(lv, yearMonth),
+        (lv) => lv.employeeId === profile.id && leaveOverlapsMonth(lv, period),
       )
     : [];
   const usedThisMonth = countWeekdayLeaves(
     monthLeavesForQuota,
     storeCalendar,
-    yearMonth,
+    period,
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const remaining = quota - usedThisMonth;
-  // ยอดหักเดือนนี้ — วันธรรมดาที่เกินโควต้า + วันอาทิตย์ที่ลา (หักทันที)
-  const deduction = getLeaveDeduction(
+  // ยอดสุทธิเดือนนี้ — ค่าหัก (วันธรรมดาเกินโควต้า + วันอาทิตย์) และโบนัสไม่ลา
+  const { deduction, bonus } = getMonthlySettlement(
     monthLeavesForQuota,
     storeCalendar,
-    yearMonth,
+    period,
   );
   const overQuotaDeduction = deduction.total > 0;
 
@@ -73,13 +86,21 @@ export default function HomeTab({
         <div className="relative flex items-center justify-between mb-3.5">
           <div>
             <div className="font-bold text-maroon text-base">
-              โควต้าการลาเดือนนี้
+              {periodIsPlainMonth ? "โควต้าการลาเดือนนี้" : "โควต้าการลารอบนี้"}
             </div>
             <div className="text-sm text-txt-soft mt-0.5">
-              {now.toLocaleDateString("th-TH", {
-                month: "long",
-                year: "numeric",
-              })}
+              {periodIsPlainMonth ? (
+                now.toLocaleDateString("th-TH", {
+                  month: "long",
+                  year: "numeric",
+                })
+              ) : (
+                // รอบไม่ตรงเดือนปฏิทิน (admin ปิดรอบก่อนสิ้นเดือน) →
+                // ต้องบอกช่วงวันให้ชัด ไม่งั้นพนักงานนับเองไม่ตรง
+                <>
+                  รอบ {fmtShort(period.start)} – {fmtShort(period.end)}
+                </>
+              )}
             </div>
           </div>
           <div className="text-right">
@@ -181,7 +202,13 @@ export default function HomeTab({
         </div>
 
         {/* ยอดหักจริงของเดือนนี้ — โชว์เฉพาะเมื่อมียอด */}
-        <DeductionSummary deduction={deduction} title="ยอดถูกหักเดือนนี้" />
+        <DeductionSummary
+          deduction={deduction}
+          title={periodIsPlainMonth ? "ยอดถูกหักเดือนนี้" : "ยอดถูกหักรอบนี้"}
+        />
+
+        {/* โบนัสไม่ลา — เขียวถ้ายังสะอาด · เทาถ้าหลุดไปแล้ว */}
+        <BonusNote bonus={bonus} showLost={deduction.total === 0} />
 
         {/* เตือนล่วงหน้าเมื่อโควต้าหมดแล้วแต่ยังไม่มียอดหัก */}
         {usedThisMonth >= quota && deduction.total === 0 && (

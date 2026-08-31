@@ -5,6 +5,7 @@ import {
   CalendarClock as IconCalendarClock,
   CalendarRange as IconCalendarRange,
   ClipboardList as IconClipboardList,
+  Gift as IconGift,
   Store as IconStore,
   Sun as IconSun,
 } from "lucide-react";
@@ -18,6 +19,8 @@ import { Box, Card, Section } from "../shared/Layout";
 const QUOTA = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
 const WEEKDAY_FINE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
 const SUNDAY_FINE = BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION;
+const SINGLE_SUNDAY_FINE = BUSINESS_RULES.SINGLE_SUNDAY_ONLY_DEDUCTION;
+const BONUS = BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS;
 
 export default function ManualModal({ onClose }) {
   return (
@@ -51,7 +54,7 @@ export default function ManualModal({ onClose }) {
           color={COLORS.maroon}
         >
           <p>
-            ทุกคนได้โควต้า <b>ลากิจ + ลาป่วย รวม {QUOTA} วัน/เดือน</b> (เฉพาะวันธรรมดา)
+            ทุกคนได้โควต้า <b>ลากิจ + ลาป่วย รวม {QUOTA} วัน/รอบ</b> (เฉพาะวันธรรมดา)
           </p>
           <ul className="mt-1.5">
             <li>
@@ -67,6 +70,70 @@ export default function ManualModal({ onClose }) {
               ลา <b>วันที่ร้านปิด</b> → ไม่นับ ไม่หัก
             </li>
           </ul>
+
+          <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
+            <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">
+              <IconGift size={14} strokeWidth={2.4} />
+              เงื่อนไขพิเศษ 2 ข้อ (คิดจากทั้งรอบ)
+            </div>
+            <ul>
+              <li>
+                <b>ลาอาทิตย์วันเดียว + ไม่ลาวันธรรมดาเลย</b> → หักแค่{" "}
+                <b className="text-red">{SINGLE_SUNDAY_FINE} บาท</b> แทน{" "}
+                {SUNDAY_FINE}
+                <br />
+                <span className="text-xs text-txt-soft">
+                  ลาอาทิตย์ 2 วันขึ้นไป → กลับไปคิด {SUNDAY_FINE} บาททุกวัน
+                </span>
+              </li>
+              <li>
+                <b>ไม่ลาเลยทั้งรอบ</b> → ได้เพิ่ม{" "}
+                <b className="text-green">+{BONUS} บาท</b>
+                <br />
+                <span className="text-xs text-txt-soft">
+                  ลาแค่วันเดียวก็หลุด แม้จะอยู่ในโควต้า · ลาวันร้านปิดไม่ทำให้เสียโบนัส
+                </span>
+              </li>
+            </ul>
+          </Box>
+        </Section>
+
+        <Section
+          title={
+            <span className="inline-flex items-center gap-1.5">
+              <IconCalendarClock size={16} strokeWidth={2.4} />
+              รอบจ่ายเงินเดือน — ทำไมไม่ใช่ "เดือน"
+            </span>
+          }
+          color={COLORS.maroon}
+        >
+          <p>
+            ร้านคิดเงินเดือน <b>ก่อนสิ้นเดือน</b> ได้ · ADMIN จะกด "ปิดรอบ" แล้วเลือกวันตัด
+            เช่นวันที่ 27
+          </p>
+          <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
+            <p className="text-xs leading-[1.9]">
+              รอบ ส.ค. = <b>28 ก.ค. → 27 ส.ค.</b>
+              <br />
+              รอบ ก.ย. = <b>28 ส.ค. → 27 ก.ย.</b>
+            </p>
+          </Box>
+          <ul>
+            <li>
+              <b>ลาหลังวันตัด ยกไปนับรอบถัดไป</b> — เช่นปิดรอบวันที่ 27 แล้วลา วันที่ 29
+              จะไปนับในรอบหน้า ไม่ใช่รอบที่จ่ายไปแล้ว
+            </li>
+            <li>
+              <b>โควต้า · ค่าหัก · โบนัส คิดตามรอบ</b> ไม่ใช่เดือนปฏิทิน
+            </li>
+            <li>
+              วันตัดไม่เท่ากันทุกเดือนก็ได้ · เดือนที่ ADMIN ยังไม่ปิดรอบ จะนับถึงสิ้นเดือนตามปกติ
+            </li>
+          </ul>
+          <p className="mt-1.5 text-xs text-txt-soft">
+            การ์ดโควต้าหน้าแรกจะเขียนช่วงวันของรอบไว้ให้ (เช่น "รอบ 28 ก.ค. – 27 ส.ค.")
+            ถ้ารอบไม่ตรงกับเดือนปฏิทิน
+          </p>
         </Section>
 
         <Section
@@ -89,7 +156,7 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                มี <b>โควต้า {QUOTA} วัน/เดือน</b>
+                มี <b>โควต้า {QUOTA} วัน/รอบ</b>
               </li>
               <li>
                 ลาเกินโควต้า → หัก <b className="text-red">{WEEKDAY_FINE} บาท</b>{" "}
@@ -151,7 +218,7 @@ export default function ManualModal({ onClose }) {
                 นับ <b>เฉพาะวันธรรมดา</b> ที่ใช้โควต้า · <b>วันอาทิตย์ไม่นับ</b> (หัก{" "}
                 {SUNDAY_FINE} บาท แยกต่างหาก)
               </li>
-              <li>ไว้ดูว่าเหลือโควต้ากี่วัน + โชว์ยอดที่ถูกหักเดือนนี้</li>
+              <li>ไว้ดูว่าเหลือโควต้ากี่วัน + โชว์ยอดที่ถูกหักในรอบนี้</li>
             </ul>
           </Card>
           <Card
@@ -172,6 +239,10 @@ export default function ManualModal({ onClose }) {
               </li>
               <li>
                 เป็นแค่ตัวบอกจำนวนวัน · <b>ไม่เกี่ยวกับการคิดเงิน</b>
+              </li>
+              <li className="text-xs text-txt-soft">
+                นับตาม <b>เดือนปฏิทิน</b> ไม่ใช่รอบจ่าย — ถ้ารอบไม่ตรงเดือน
+                ตัวเลขนี้กับการ์ดโควต้าจะต่างกันได้
               </li>
             </ul>
           </Card>
@@ -208,7 +279,7 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               ถ้า ADMIN กำหนด "เสาร์เปิดพิเศษ" → <b>ลาเสาร์นั้นนับเหมือนวันธรรมดา</b>{" "}
-              (เข้าโควต้า {QUOTA} วัน/เดือน · เกินหัก {WEEKDAY_FINE} บาท/วัน)
+              (เข้าโควต้า {QUOTA} วัน/รอบ · เกินหัก {WEEKDAY_FINE} บาท/วัน)
             </li>
             <li>
               ถ้า ADMIN กำหนด "วันธรรมดาปิดพิเศษ" (อบรม, หยุดยาว ฯลฯ) →{" "}
@@ -257,7 +328,7 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               <b>ลากิจ</b> — ลาล่วงหน้าได้ ไม่ติดเพดาน 2 อาทิตย์เหมือนลาป่วย (ยังอยู่ในโควต้า{" "}
-              {QUOTA} วัน/เดือนเหมือนเดิม)
+              {QUOTA} วัน/รอบเหมือนเดิม)
             </li>
           </ul>
         </Section>

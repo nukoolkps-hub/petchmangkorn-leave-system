@@ -7,6 +7,7 @@ import {
   CalendarRange as IconCalendarRange,
   ChevronRight as IconChevronRight,
   ClipboardList as IconClipboardList,
+  Gift as IconGift,
   ShieldCheck as IconShieldCheck,
   Sun as IconSun,
   Trash2 as IconTrash,
@@ -17,9 +18,15 @@ import type { LeaveEntry, StoreCalendar } from "../../types";
 import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
-  getAdditionalDeduction,
+  getRequestImpact,
+  hasPerfectAttendance,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  type PeriodCutoffs,
+  periodKeyForDate,
+} from "../../utils/payrollPeriod";
 import { isStoreClosed, isSunday } from "../../utils/storeCalendar";
 import ConfirmModal from "../modals/ConfirmModal";
 import SubmitLeaveConfirmModal from "../modals/SubmitLeaveConfirmModal";
@@ -70,6 +77,7 @@ interface RequestTabProps {
   onResetForm: () => void;
   onDelete: (id: string | number) => void;
   storeCalendar?: StoreCalendar | null;
+  periodCutoffs?: PeriodCutoffs;
 }
 
 export default function RequestTab({
@@ -91,6 +99,7 @@ export default function RequestTab({
   onResetForm,
   onDelete,
   storeCalendar,
+  periodCutoffs,
 }: RequestTabProps) {
   const [confirmLeave, setConfirmLeave] = useState<LeaveEntry | null>(null);
   // confirm modal ก่อนยื่นใบลาจริง · เปิดเมื่อ validate ผ่านแล้วเท่านั้น
@@ -117,6 +126,11 @@ export default function RequestTab({
   // คงค่าตอน module import) · sickMaxDate cap ปฏิทินลาป่วยที่ +14 วัน
   const todayStr = todayYmd();
   const currentMonth = todayStr.slice(0, 7);
+  /* รอบที่วันนี้ตกอยู่ — ใช้คิดโควต้า/ยอดหักให้ตรงกับที่ admin จ่ายจริง */
+  const currentPeriod = getPeriodRange(
+    periodKeyForDate(todayStr, periodCutoffs),
+    periodCutoffs,
+  );
   const sickMaxDate = addDaysYmd(todayStr, SICK_LEAVE_MAX_AHEAD_DAYS);
   // ช่วงเดือนที่เลื่อนดูได้ (ต่อเนื่อง · ใหม่→เก่า) — ครอบทั้งเดือนปัจจุบัน
   // และทุกเดือนที่มีใบลา (รวมใบลาล่วงหน้าในอนาคต)
@@ -183,13 +197,13 @@ export default function RequestTab({
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv: LeaveEntry) =>
-          lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentMonth),
+          lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentPeriod),
       )
     : [];
   const usedThisMonth = countWeekdayLeaves(
     monthLeavesForQuota,
     storeCalendar,
-    currentMonth,
+    currentPeriod,
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const rem = quota - usedThisMonth;
@@ -198,10 +212,20 @@ export default function RequestTab({
   /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
      คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — โควต้าเป็นของทั้งเดือน
      ถ้าเดือนนี้ใช้โควต้าหมดแล้ว วันธรรมดาวันแรกของใบใหม่ก็โดนหักเลย */
-  const pendingDeduction = getAdditionalDeduction(
+  const pendingImpact = getRequestImpact(
     myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
     { start: form.startDate, end: form.endDate },
     storeCalendar,
+    periodCutoffs,
+  );
+
+  /* เดือนนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่
+     ต้องบอกให้ชัดว่า "โควต้าที่เหลือ" ไม่ได้แปลว่าลาฟรี — วันแรกไม่ถูกหักเงิน
+     ก็จริง แต่ทำให้เสียโบนัสทั้งก้อน ซึ่งแพงกว่าวันถัด ๆ ไปเสียอีก */
+  const bonusStillAvailable = hasPerfectAttendance(
+    monthLeavesForQuota,
+    storeCalendar,
+    currentPeriod,
   );
 
   return (
@@ -223,10 +247,26 @@ export default function RequestTab({
           >
             {overQuota
               ? `หมดโควต้าแล้ว — วันธรรมดาหักวันละ ${BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท`
-              : `โควต้าเดือนนี้เหลือ ${rem} วัน`}
+              : `โควต้ารอบนี้เหลือ ${rem} วัน`}
           </div>
+          {bonusStillAvailable && (
+            <div className="text-sm font-semibold text-amber mt-0.5 inline-flex items-start gap-1.5">
+              <IconGift
+                size={14}
+                strokeWidth={2.4}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                ยังไม่ลาในรอบนี้ — ลาแม้อยู่ในโควต้าก็เสียโบนัส{" "}
+                {BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS.toLocaleString(
+                  "th-TH",
+                )}{" "}
+                บาท
+              </span>
+            </div>
+          )}
           <div className="text-sm text-txt-soft mt-0.5">
-            ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
+            ลากิจ + ลาป่วย รวม {quota} วัน/รอบ
           </div>
           <div className="text-xs text-txt-soft mt-0.5">
             นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
@@ -345,7 +385,11 @@ export default function RequestTab({
         </div>
       )}
       {days > 0 && (
-        <DeductionSummary deduction={pendingDeduction} title="ใบลานี้จะถูกหัก" />
+        <DeductionSummary
+          deduction={pendingImpact.deduction}
+          bonusLost={pendingImpact.bonusLost}
+          title={pendingImpact.bonusLost > 0 ? "ใบลานี้จะเสียรวม" : "ใบลานี้จะถูกหัก"}
+        />
       )}
       {errors.over && (
         <div className="text-red text-sm mx-0 mt-1 mb-2.5 inline-flex items-center gap-1">
@@ -376,7 +420,7 @@ export default function RequestTab({
           startDate={form.startDate}
           endDate={form.endDate}
           days={days}
-          deduction={pendingDeduction}
+          impact={pendingImpact}
           saving={submittingLeave}
           onConfirm={handleConfirmSubmit}
           onCancel={() => setShowSubmitConfirm(false)}

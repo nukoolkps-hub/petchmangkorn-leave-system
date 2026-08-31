@@ -1,12 +1,35 @@
 /* ─── Leave counting helpers ───────────────────────────────────── */
 import { BUSINESS_RULES } from "../constants";
 import type { StoreCalendar } from "../types";
+import {
+  getPeriodRange,
+  isInPeriod,
+  type LeavePeriod,
+  lastDayOfMonth,
+  type PeriodCutoffs,
+  periodKeysInRange,
+} from "./payrollPeriod";
 import { dateToYmd, isQuotaCountableDay, isStoreClosed } from "./storeCalendar";
+
+/** ช่วงเวลาที่ใช้คิดเงิน — ใส่ได้ 2 แบบ
+ *  - "YYYY-MM"  = เดือนปฏิทินเต็มเดือน (ใช้ตอนยังไม่มีรอบจ่าย)
+ *  - LeavePeriod = ช่วงวันของ "รอบจ่าย" ที่ admin ปิดไว้
+ *  ทุกฟังก์ชันด้านล่างรับได้ทั้งคู่ → call site เดิมไม่ต้องแก้ */
+export type PeriodArg = string | LeavePeriod;
+
+function toPeriod(arg?: PeriodArg): LeavePeriod | undefined {
+  if (!arg) return undefined;
+  return typeof arg === "string"
+    ? { start: `${arg}-01`, end: lastDayOfMonth(arg) }
+    : arg;
+}
 
 const {
   WEEKDAY_LEAVE_QUOTA,
   OVER_QUOTA_WEEKDAY_DEDUCTION,
   SUNDAY_LEAVE_DEDUCTION,
+  SINGLE_SUNDAY_ONLY_DEDUCTION,
+  PERFECT_ATTENDANCE_BONUS,
 } = BUSINESS_RULES;
 
 /** วันที่ลาควรนับเข้า "วันธรรมดา" (โควต้า) ไหม
@@ -21,30 +44,32 @@ function isCountableWeekday(
   return isQuotaCountableDay(dateToYmd(date), calendar);
 }
 
-/** ใบลา (อาจคร่อมเดือน) "แตะ" เดือน yearMonth (YYYY-MM) ไหม
+/** ใบลา (อาจคร่อมรอบ) "แตะ" ช่วงที่กำลังคิดเงินไหม
  *  ใช้คัดใบลาเข้าเดือนสำหรับ "คำนวณเงิน" — ใบลาคร่อม 2 เดือน (เช่น 30 พ.ค.
  *  → 3 มิ.ย.) ต้องนับเข้าทั้งสองเดือน (เดิมใช้ start.startsWith จับเฉพาะเดือน
- *  เริ่ม → เดือนปลายมองไม่เห็น เงินเพี้ยน) · ต้องใช้คู่กับ arg yearMonth ใน
+ *  เริ่ม → เดือนปลายมองไม่เห็น เงินเพี้ยน) · ต้องใช้คู่กับ arg period ใน
  *  countWeekdayLeaves/getOverQuotaDays เพื่อ clamp ให้แต่ละเดือนนับเฉพาะวัน
  *  ของตัวเอง */
 export function leaveOverlapsMonth(
   leave: { start: string; end: string },
-  yearMonth: string,
+  period: PeriodArg,
 ): boolean {
-  return (
-    leave.start.slice(0, 7) <= yearMonth && leave.end.slice(0, 7) >= yearMonth
-  );
+  const p = toPeriod(period);
+  if (!p) return false;
+  // ใบลา "แตะ" ช่วงนี้ = ไม่ได้จบก่อนช่วงเริ่ม และไม่ได้เริ่มหลังช่วงจบ
+  return leave.start <= p.end && leave.end >= p.start;
 }
 
 /* นับเฉพาะวันลาที่ "ตรงกับวันทำงาน" (ใช้รวมเข้าโควต้า)
    - calendar = undefined → ใช้กฎเดิม (Mon-Fri นับ · เสาร์-อาทิตย์ข้าม)
-   - yearMonth (YYYY-MM) → นับเฉพาะวันที่อยู่ในเดือนนั้น (clamp ใบลาคร่อมเดือน
+   - period → นับเฉพาะวันที่อยู่ในช่วงนั้น (clamp ใบลาคร่อมรอบ
      ให้แต่ละเดือนนับเฉพาะวันของตัวเอง) · undefined = นับทุกวันในช่วง (เดิม)  */
 export function countWeekdayLeaves(
   monthLeaves: { start: string; end: string }[],
   calendar?: StoreCalendar | null,
-  yearMonth?: string,
+  period?: PeriodArg,
 ) {
+  const p = toPeriod(period);
   let n = 0;
   monthLeaves.forEach((lv) => {
     const s = new Date(`${lv.start}T00:00:00`);
@@ -52,7 +77,7 @@ export function countWeekdayLeaves(
     const c = new Date(s);
     while (c <= e) {
       if (
-        (!yearMonth || dateToYmd(c).slice(0, 7) === yearMonth) &&
+        (!p || isInPeriod(dateToYmd(c), p)) &&
         isCountableWeekday(c, calendar)
       )
         n++;
@@ -74,8 +99,9 @@ export function countWeekdayLeaves(
 export function getOverQuotaDays(
   monthLeaves: { start: string; end: string }[],
   calendar?: StoreCalendar | null,
-  yearMonth?: string,
+  period?: PeriodArg,
 ) {
+  const p = toPeriod(period);
   // เก็บวันที่ "วันทำงาน" ที่ลาทั้งหมด (chronological) · dedupe กันใบลาทับ
   const workDayDates: string[] = [];
   let sundays = 0;
@@ -85,8 +111,8 @@ export function getOverQuotaDays(
     const e = new Date(`${lv.end}T00:00:00`);
     const c = new Date(s);
     while (c <= e) {
-      // clamp ใบลาคร่อมเดือน — นับเฉพาะวันที่อยู่ในเดือน yearMonth (ถ้าระบุ)
-      if (!yearMonth || dateToYmd(c).slice(0, 7) === yearMonth) {
+      // clamp ใบลาคร่อมรอบ — นับเฉพาะวันที่อยู่ในช่วงที่ระบุ
+      if (!p || isInPeriod(dateToYmd(c), p)) {
         const dow = c.getDay();
         if (dow === 0) {
           // อาทิตย์ที่ร้านเปิด → หักทันที · อาทิตย์ปิดพิเศษ → ข้าม ไม่หัก
@@ -141,20 +167,27 @@ const EMPTY_DEDUCTION: LeaveDeduction = {
   total: 0,
 };
 
-/** ยอดหักของ "ชุดใบลา" ชุดหนึ่ง · ระบุ yearMonth เพื่อ clamp ใบลาคร่อมเดือน
- *  ให้แต่ละเดือนคิดเฉพาะวันของตัวเอง (โควต้าเป็นรายเดือน) */
+/** ยอดหักของ "ชุดใบลา" ชุดหนึ่ง · ระบุ period เพื่อ clamp ใบลาคร่อมรอบ
+ *  ให้แต่ละเดือนคิดเฉพาะวันของตัวเอง (โควต้า + กฎผ่อนผันเป็นรายเดือน)
+ *
+ *  กฎผ่อนผัน: ลาอาทิตย์ "วันเดียว" และไม่ได้ลาวันธรรมดาเลย → หักแค่
+ *  SINGLE_SUNDAY_ONLY_DEDUCTION · ถ้าลาอาทิตย์ 2 วันขึ้นไป กลับไปคิด
+ *  เต็มอัตราทุกวัน (ไม่ใช่วันแรกถูกวันหลังแพง)                          */
 export function getLeaveDeduction(
   monthLeaves: { start: string; end: string }[],
   calendar?: StoreCalendar | null,
-  yearMonth?: string,
+  period?: PeriodArg,
 ): LeaveDeduction {
-  const { weekdays, sundays } = getOverQuotaDays(
-    monthLeaves,
-    calendar,
-    yearMonth,
-  );
+  const { weekdays, sundays } = getOverQuotaDays(monthLeaves, calendar, period);
+  // จำนวนวันธรรมดาที่ลา "จริง" (ไม่ใช่เฉพาะส่วนที่เกินโควต้า) — กฎผ่อนผัน
+  // ต้องการ "ไม่ลาวันธรรมดาเลย" ซึ่งวันในโควต้าก็ถือว่าลาแล้ว
+  const weekdayLeaveDays = countWeekdayLeaves(monthLeaves, calendar, period);
+  const eligibleForSingleSundayRate = sundays === 1 && weekdayLeaveDays === 0;
+
   const weekdayAmount = weekdays * OVER_QUOTA_WEEKDAY_DEDUCTION;
-  const sundayAmount = sundays * SUNDAY_LEAVE_DEDUCTION;
+  const sundayAmount = eligibleForSingleSundayRate
+    ? SINGLE_SUNDAY_ONLY_DEDUCTION
+    : sundays * SUNDAY_LEAVE_DEDUCTION;
   return {
     weekdayDays: weekdays,
     sundayDays: sundays,
@@ -164,19 +197,37 @@ export function getLeaveDeduction(
   };
 }
 
-/** เดือน (YYYY-MM) ทั้งหมดที่ช่วงวันนี้คร่อม */
-function monthsInRange(start: string, end: string): string[] {
-  if (!start || !end || end < start) return [];
-  const months: string[] = [];
-  const c = new Date(`${start.slice(0, 7)}-01T00:00:00`);
-  const last = end.slice(0, 7);
-  for (let guard = 0; guard < 24; guard++) {
-    const ym = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, "0")}`;
-    months.push(ym);
-    if (ym >= last) break;
-    c.setMonth(c.getMonth() + 1);
-  }
-  return months;
+/** เดือนนี้ "ไม่มีวันลาที่นับเลย" ไหม — วันที่ร้านปิดไม่นับ จึงลาวันร้านปิด
+ *  ได้โดยไม่เสียโบนัส */
+export function hasPerfectAttendance(
+  monthLeaves: { start: string; end: string }[],
+  calendar?: StoreCalendar | null,
+  period?: PeriodArg,
+): boolean {
+  const { sundays } = getOverQuotaDays(monthLeaves, calendar, period);
+  const weekdayLeaveDays = countWeekdayLeaves(monthLeaves, calendar, period);
+  return sundays === 0 && weekdayLeaveDays === 0;
+}
+
+/** ยอดสุทธิของทั้งเดือน — ค่าหัก + โบนัสไม่ลา
+ *  net > 0 = ได้เงินเพิ่ม · net < 0 = ถูกหัก · 0 = เท่าทุน */
+export interface MonthlySettlement {
+  deduction: LeaveDeduction;
+  /** 0 หรือ PERFECT_ATTENDANCE_BONUS */
+  bonus: number;
+  net: number;
+}
+
+export function getMonthlySettlement(
+  monthLeaves: { start: string; end: string }[],
+  calendar?: StoreCalendar | null,
+  period?: PeriodArg,
+): MonthlySettlement {
+  const deduction = getLeaveDeduction(monthLeaves, calendar, period);
+  const bonus = hasPerfectAttendance(monthLeaves, calendar, period)
+    ? PERFECT_ATTENDANCE_BONUS
+    : 0;
+  return { deduction, bonus, net: bonus - deduction.total };
 }
 
 /** ยอดหักที่ "ใบลาใบใหม่" จะทำให้เพิ่มขึ้น — ใช้โชว์ตอนกรอกฟอร์ม
@@ -189,16 +240,18 @@ export function getAdditionalDeduction(
   existingLeaves: { start: string; end: string }[],
   candidate: { start: string; end: string },
   calendar?: StoreCalendar | null,
+  cutoffs?: PeriodCutoffs | null,
 ): LeaveDeduction {
-  const months = monthsInRange(candidate.start, candidate.end);
-  if (months.length === 0) return EMPTY_DEDUCTION;
+  const keys = periodKeysInRange(candidate.start, candidate.end, cutoffs);
+  if (keys.length === 0) return EMPTY_DEDUCTION;
 
-  return months.reduce<LeaveDeduction>((acc, ym) => {
-    const before = getLeaveDeduction(existingLeaves, calendar, ym);
+  return keys.reduce<LeaveDeduction>((acc, key) => {
+    const period = getPeriodRange(key, cutoffs);
+    const before = getLeaveDeduction(existingLeaves, calendar, period);
     const after = getLeaveDeduction(
       [...existingLeaves, candidate],
       calendar,
-      ym,
+      period,
     );
     return {
       weekdayDays: acc.weekdayDays + (after.weekdayDays - before.weekdayDays),
@@ -210,4 +263,44 @@ export function getAdditionalDeduction(
       total: acc.total + (after.total - before.total),
     };
   }, EMPTY_DEDUCTION);
+}
+
+/** ผลกระทบเป็นเงินของ "ใบลาใบใหม่" — ใช้โชว์ตอนกรอกฟอร์ม
+ *  รวมทั้งค่าหักที่เพิ่มขึ้น และโบนัสไม่ลาที่จะเสียไป (ถ้าเดือนนั้นยังสะอาดอยู่) */
+export interface RequestImpact {
+  /** ส่วนต่างค่าหักที่ใบนี้ทำให้เพิ่ม */
+  deduction: LeaveDeduction;
+  /** โบนัสที่จะหลุดเพราะใบนี้ (0 หรือ PERFECT_ATTENDANCE_BONUS ต่อเดือนที่คร่อม) */
+  bonusLost: number;
+  /** เงินที่หายไปทั้งหมดจากการยื่นใบนี้ */
+  total: number;
+}
+
+export function getRequestImpact(
+  existingLeaves: { start: string; end: string }[],
+  candidate: { start: string; end: string },
+  calendar?: StoreCalendar | null,
+  cutoffs?: PeriodCutoffs | null,
+): RequestImpact {
+  const deduction = getAdditionalDeduction(
+    existingLeaves,
+    candidate,
+    calendar,
+    cutoffs,
+  );
+  const bonusLost = periodKeysInRange(
+    candidate.start,
+    candidate.end,
+    cutoffs,
+  ).reduce((sum, key) => {
+    const period = getPeriodRange(key, cutoffs);
+    const before = getMonthlySettlement(existingLeaves, calendar, period).bonus;
+    const after = getMonthlySettlement(
+      [...existingLeaves, candidate],
+      calendar,
+      period,
+    ).bonus;
+    return sum + (before - after);
+  }, 0);
+  return { deduction, bonusLost, total: deduction.total + bonusLost };
 }

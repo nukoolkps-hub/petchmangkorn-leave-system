@@ -5,18 +5,28 @@ import {
   CalendarRange as IconCalendarRange,
   Cross as IconCross,
   Sun as IconSun,
-  Wallet as IconWallet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
-import { formatBaht } from "../../utils/format";
-import { getLeaveDeduction } from "../../utils/leaveUtils";
+import {
+  getLeaveDeduction,
+  hasPerfectAttendance,
+  leaveOverlapsMonth,
+} from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  isCalendarMonth,
+  isPeriodClosed,
+  type PeriodCutoffs,
+} from "../../utils/payrollPeriod";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
 import ThemedSelect from "../shared/ThemedSelect";
+import PayrollPeriodBar from "./PayrollPeriodBar";
+import PeriodSettlementTable from "./PeriodSettlementTable";
 
 /* ─── แสดง breakdown วันธรรมดา/อาทิตย์ บรรทัดเดียว ใต้ยอดรวมวันลา ──── */
 function LeaveDayBreakdown({
@@ -93,6 +103,11 @@ interface LeaveSummaryPanelProps {
   allLeaves: LeaveEntry[];
   employeeDirectory: Employee[];
   storeCalendar: StoreCalendar;
+  /** วันตัดรอบของเดือนที่ปิดไปแล้ว — กำหนดว่าแต่ละรอบกินวันไหนถึงวันไหน */
+  periodCutoffs: PeriodCutoffs;
+  onClosePeriod: (yearMonth: string, cutoffYmd: string) => Promise<void>;
+  onReopenPeriod: (yearMonth: string) => Promise<void>;
+  showToast: (msg: string) => void;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
    *  อื่น (LeaveListPanel) */
   selectedMonth: string;
@@ -104,6 +119,10 @@ export default function LeaveSummaryPanel({
   allLeaves,
   employeeDirectory,
   storeCalendar,
+  periodCutoffs,
+  onClosePeriod,
+  onReopenPeriod,
+  showToast,
   selectedMonth,
   onSelectMonth,
 }: LeaveSummaryPanelProps) {
@@ -131,21 +150,47 @@ export default function LeaveSummaryPanel({
   const effectiveMonth = months.includes(selectedMonth)
     ? selectedMonth
     : currentMonth;
-  /* ยอดหักรวมทั้งร้านในเดือนที่กำลังดู — คิดแยกรายคนก่อนแล้วค่อยรวม
-     เพราะโควต้าเป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน */
-  const monthDeductionTotal = useMemo(
-    () =>
-      employeeDirectory.reduce((sum, emp) => {
+  /* ─── รอบจ่ายของเดือนที่กำลังดู ─────────────────────────────────
+     รอบ = ตั้งแต่วันถัดจากวันตัดของเดือนก่อน → วันตัดของเดือนนี้
+     เดือนที่ยังไม่ปิด ใช้สิ้นเดือนเป็นขอบชั่วคราว                        */
+  const period = useMemo(
+    () => getPeriodRange(effectiveMonth, periodCutoffs),
+    [effectiveMonth, periodCutoffs],
+  );
+  const periodClosed = isPeriodClosed(effectiveMonth, periodCutoffs);
+  const periodIsPlainMonth = isCalendarMonth(effectiveMonth, period);
+
+  /* สรุปรายคนของทั้งรอบ — คิดแยกทีละคนแล้วค่อยรวม เพราะโควต้า/โบนัส
+     เป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน · เรียงคนถูกหักมากสุดขึ้นก่อน */
+  const rows = useMemo(() => {
+    return employeeDirectory
+      .map((emp) => {
         const empLeaves = allLeaves.filter(
-          (lv) =>
-            lv.employeeId === emp.id && lv.start.startsWith(effectiveMonth),
+          (lv) => lv.employeeId === emp.id && leaveOverlapsMonth(lv, period),
         );
-        return (
-          sum +
-          getLeaveDeduction(empLeaves, storeCalendar, effectiveMonth).total
-        );
-      }, 0),
-    [allLeaves, employeeDirectory, storeCalendar, effectiveMonth],
+        const deduction = getLeaveDeduction(empLeaves, storeCalendar, period);
+        const bonus = hasPerfectAttendance(empLeaves, storeCalendar, period)
+          ? BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS
+          : 0;
+        return {
+          id: emp.id,
+          name: emp.nickname || emp.name,
+          deduction,
+          bonus,
+          net: bonus - deduction.total,
+        };
+      })
+      .sort((a, b) => a.net - b.net);
+  }, [allLeaves, employeeDirectory, storeCalendar, period]);
+
+  const periodTotals = useMemo(
+    () => ({
+      deducted: rows.reduce((sum, r) => sum + r.deduction.total, 0),
+      bonus: rows.reduce((sum, r) => sum + r.bonus, 0),
+      net: rows.reduce((sum, r) => sum + r.net, 0),
+      bonusNames: rows.filter((r) => r.bonus > 0).map((r) => r.name),
+    }),
+    [rows],
   );
 
   const years: string[] = (
@@ -161,7 +206,7 @@ export default function LeaveSummaryPanel({
         <div className="flex items-center justify-between mb-3.5">
           <div className="font-bold text-maroon text-base flex items-center gap-1.5">
             <IconCalendar size={16} strokeWidth={2.4} />
-            สรุปรายเดือน
+            สรุปรอบจ่าย
           </div>
           <MonthChevronNav
             months={months}
@@ -169,17 +214,21 @@ export default function LeaveSummaryPanel({
             onSelect={onSelectMonth}
           />
         </div>
-        {monthDeductionTotal > 0 && (
-          <div className="rounded-xl border-[1.5px] border-[#C0392B40] bg-[#FEF2F2] px-3.5 py-2.5 mb-3 flex items-center justify-between gap-3">
-            <span className="text-sm font-bold text-red inline-flex items-center gap-1.5">
-              <IconWallet size={14} strokeWidth={2.4} />
-              ยอดหักรวมทั้งเดือน
-            </span>
-            <span className="text-lg font-extrabold text-red">
-              {formatBaht(monthDeductionTotal)}
-            </span>
-          </div>
-        )}
+        <PayrollPeriodBar
+          yearMonth={effectiveMonth}
+          period={period}
+          closed={periodClosed}
+          plainMonth={periodIsPlainMonth}
+          onClose={onClosePeriod}
+          onReopen={onReopenPeriod}
+          showToast={showToast}
+        />
+        <PeriodSettlementTable
+          rows={rows}
+          period={period}
+          totals={periodTotals}
+          showToast={showToast}
+        />
         {employeeDirectory.length === 0 && (
           <div className="text-txt-soft text-sm text-center py-4">ไม่มีข้อมูล</div>
         )}
@@ -190,8 +239,7 @@ export default function LeaveSummaryPanel({
               const name = employeeInfo.nickname || employeeInfo.name;
               const monthLeaves = allLeaves.filter(
                 (lv) =>
-                  lv.employeeId === empId &&
-                  lv.start.startsWith(effectiveMonth),
+                  lv.employeeId === empId && leaveOverlapsMonth(lv, period),
               );
               const totalTimes = monthLeaves.length;
               if (totalTimes === 0) return null;
@@ -215,7 +263,7 @@ export default function LeaveSummaryPanel({
               const deduction = getLeaveDeduction(
                 monthLeaves,
                 storeCalendar,
-                effectiveMonth,
+                period,
               );
               return (
                 <div

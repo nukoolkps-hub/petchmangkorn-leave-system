@@ -26,6 +26,9 @@ export default function AdminPanel({
   onDeleteEmployee,
   onReorderEmployees,
   storeCalendar,
+  periodCutoffs,
+  onClosePeriod,
+  onReopenPeriod,
   onUpdateStoreCalendar,
   showToast,
   // controlled by App so the desktop Sidebar can drive section as well
@@ -175,6 +178,10 @@ export default function AdminPanel({
             allLeaves={allLeaves}
             employeeDirectory={employeeDirectory}
             storeCalendar={storeCalendar}
+            periodCutoffs={periodCutoffs}
+            onClosePeriod={onClosePeriod}
+            onReopenPeriod={onReopenPeriod}
+            showToast={showToast}
             selectedMonth={adminMonth}
             onSelectMonth={setAdminMonth}
           />
