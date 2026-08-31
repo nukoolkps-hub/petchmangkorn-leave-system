@@ -13,11 +13,16 @@ import {
   Trash2 as IconTrash,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { BUSINESS_RULES, COLORS, LEAVE_TYPES } from "../../constants";
+import {
+  BUSINESS_RULES,
+  COLORS,
+  LEAVE_TYPES,
+  MAX_LEAVE_BONUS,
+} from "../../constants";
 import type { LeaveEntry, StoreCalendar } from "../../types";
 import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
-  countWeekdayLeaves,
+  getDeductibleLeaveDays,
   getRequestImpact,
   hasPerfectAttendance,
   leaveOverlapsMonth,
@@ -126,7 +131,7 @@ export default function RequestTab({
   // คงค่าตอน module import) · sickMaxDate cap ปฏิทินลาป่วยที่ +14 วัน
   const todayStr = todayYmd();
   const currentMonth = todayStr.slice(0, 7);
-  /* รอบที่วันนี้ตกอยู่ — ใช้คิดโควต้า/ยอดหักให้ตรงกับที่ admin จ่ายจริง */
+  /* รอบที่วันนี้ตกอยู่ — ใช้คิดยอดหัก/โบนัสให้ตรงกับที่ admin จ่ายจริง */
   const currentPeriod = getPeriodRange(
     periodKeyForDate(todayStr, periodCutoffs),
     periodCutoffs,
@@ -193,25 +198,20 @@ export default function RequestTab({
   }, [myLeaves]);
 
   /* ─── Quota status for this month — count weekday days (Mon-Fri)
-       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหัก ไม่นับโควต้า */
+       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักคนละอัตรา */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv: LeaveEntry) =>
           lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentPeriod),
       )
     : [];
-  const usedThisMonth = countWeekdayLeaves(
-    monthLeavesForQuota,
-    storeCalendar,
-    currentPeriod,
-  );
-  const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
-  const rem = quota - usedThisMonth;
-  const overQuota = usedThisMonth >= quota;
+  const { weekdays: usedWeekdays, sundays: usedSundays } =
+    getDeductibleLeaveDays(monthLeavesForQuota, storeCalendar, currentPeriod);
+  const usedDays = usedWeekdays + usedSundays;
 
   /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
-     คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — โควต้าเป็นของทั้งเดือน
-     ถ้าเดือนนี้ใช้โควต้าหมดแล้ว วันธรรมดาวันแรกของใบใหม่ก็โดนหักเลย */
+     คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — ใบใหม่อาจทับวันกับใบเดิม
+     ซึ่งไม่ควรถูกหักซ้ำ                                              */
   const pendingImpact = getRequestImpact(
     myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
     { start: form.startDate, end: form.endDate },
@@ -219,9 +219,9 @@ export default function RequestTab({
     periodCutoffs,
   );
 
-  /* เดือนนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่
-     ต้องบอกให้ชัดว่า "โควต้าที่เหลือ" ไม่ได้แปลว่าลาฟรี — วันแรกไม่ถูกหักเงิน
-     ก็จริง แต่ทำให้เสียโบนัสทั้งก้อน ซึ่งแพงกว่าวันถัด ๆ ไปเสียอีก */
+  /* รอบนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่ครบทั้ง 2 ก้อน
+     ต้องเตือนให้ชัด เพราะวันลาวันแรกแพงกว่าที่คิด — เสียทั้งค่าหัก
+     และโบนัสทั้งก้อนพร้อมกัน */
   const bonusStillAvailable = hasPerfectAttendance(
     monthLeavesForQuota,
     storeCalendar,
@@ -230,12 +230,14 @@ export default function RequestTab({
 
   return (
     <div>
-      {/* quota status in form */}
+      {/* สถานะการลาของรอบนี้ */}
       <div
-        className={`rounded-xl px-4 py-3 mb-5 flex items-center gap-3 border-[1.5px] ${overQuota ? "bg-[#FEF2F2] border-[#C0392B50]" : "bg-gold-pale border-[#C9973A50]"}`}
+        className={`rounded-xl px-4 py-3 mb-5 flex items-center gap-3 border-[1.5px] ${usedDays > 0 ? "bg-[#FEF2F2] border-[#C0392B50]" : "bg-gold-pale border-[#C9973A50]"}`}
       >
-        <div className={`shrink-0 ${overQuota ? "text-red" : "text-maroon"}`}>
-          {overQuota ? (
+        <div
+          className={`shrink-0 ${usedDays > 0 ? "text-red" : "text-maroon"}`}
+        >
+          {usedDays > 0 ? (
             <IconAlertTriangle size={26} strokeWidth={2.2} />
           ) : (
             <IconClipboardList size={26} strokeWidth={2.2} />
@@ -243,11 +245,9 @@ export default function RequestTab({
         </div>
         <div className="flex-1">
           <div
-            className={`font-bold text-sm ${overQuota ? "text-red" : "text-maroon"}`}
+            className={`font-bold text-sm ${usedDays > 0 ? "text-red" : "text-maroon"}`}
           >
-            {overQuota
-              ? `หมดโควต้าแล้ว — วันธรรมดาหักวันละ ${BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท`
-              : `โควต้ารอบนี้เหลือ ${rem} วัน`}
+            {usedDays > 0 ? `รอบนี้ลาไปแล้ว ${usedDays} วัน` : "รอบนี้ยังไม่ได้ลาเลย"}
           </div>
           {bonusStillAvailable && (
             <div className="text-sm font-semibold text-amber mt-0.5 inline-flex items-start gap-1.5">
@@ -257,29 +257,24 @@ export default function RequestTab({
                 className="mt-0.5 shrink-0"
               />
               <span>
-                ยังไม่ลาในรอบนี้ — ลาแม้อยู่ในโควต้าก็เสียโบนัส{" "}
-                {BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS.toLocaleString(
-                  "th-TH",
-                )}{" "}
-                บาท
+                ลาวันธรรมดา 1 วัน = เสียโบนัส{" "}
+                {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท เพิ่มจากค่าหัก
               </span>
             </div>
           )}
-          <div className="text-sm text-txt-soft mt-0.5">
-            ลากิจ + ลาป่วย รวม {quota} วัน/รอบ
-          </div>
           <div className="text-xs text-txt-soft mt-0.5">
-            นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
-            บาททันที (ไม่กินโควต้า)
+            วันธรรมดาหัก {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION} บาท/วัน ·
+            วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน ·
+            วันที่ร้านปิดไม่นับ
           </div>
         </div>
         <div className="text-right shrink-0">
           <div
-            className={`text-xl font-extrabold ${overQuota ? "text-red" : "text-gold"}`}
+            className={`text-xl font-extrabold ${usedDays > 0 ? "text-red" : "text-gold"}`}
           >
-            {usedThisMonth}
+            {usedDays}
           </div>
-          <div className="text-xs text-txt-soft">/ {quota} วัน</div>
+          <div className="text-xs text-txt-soft">วันที่ลา</div>
         </div>
       </div>
 

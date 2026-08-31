@@ -128,7 +128,7 @@ export function useEmployeesForScope({
 }
 
 /** ปฏิทินเปิด-ปิดร้าน — public read · admin write · doc เดียว
- *  /config/storeCalendar (ใช้นับวันลาว่าวันไหนนับโควต้า/วันไหนร้านปิด) */
+ *  /config/storeCalendar (ใช้นับวันลาว่าวันไหนหักเงิน/วันไหนร้านปิด) */
 export function useStoreCalendar() {
   return useScopedSubscription(
     () => subscribeStoreCalendar,

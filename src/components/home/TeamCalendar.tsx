@@ -325,9 +325,7 @@ export default function TeamCalendar({
                       storeClosed ? "opacity-40" : ""
                     }`}
                     title={
-                      storeClosed
-                        ? "วันร้านปิด — ใบลาไม่นับโควต้า · ไม่หักเงิน"
-                        : undefined
+                      storeClosed ? "วันร้านปิด — ใบลาไม่นับ · ไม่หักเงิน" : undefined
                     }
                   >
                     {leaveEntriesForDate.slice(0, 3).map((leaveEntry) => {

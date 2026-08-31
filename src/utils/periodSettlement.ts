@@ -12,11 +12,10 @@
 
    Pure module — ห้ามเรียก Firestore ที่นี่                              */
 
-import { BUSINESS_RULES } from "../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../types";
 import {
+  getLeaveBonus,
   getLeaveDeduction,
-  hasPerfectAttendance,
   type LeaveDeduction,
   leaveOverlapsMonth,
 } from "./leaveUtils";
@@ -29,7 +28,7 @@ export interface SettlementRow {
    *  เพื่อให้รอบเก่ายังอ่านออกแม้ภายหลังจะเปลี่ยนชื่อ/ลบพนักงาน */
   name: string;
   deduction: LeaveDeduction;
-  /** โบนัสไม่ลาทั้งรอบ (0 = ไม่ได้) */
+  /** โบนัสรวมของรอบ (ไม่ลาวันธรรมดา + top up ไม่ลาเลย · 0 = ไม่ได้เลย) */
   bonus: number;
   /** สุทธิ = โบนัส − ยอดหัก (บวก = ได้เพิ่ม · ลบ = ถูกหัก) */
   net: number;
@@ -79,7 +78,7 @@ function sumTotals(rows: SettlementRow[]): SettlementTotals {
   );
 }
 
-/** สรุปเงินของทุกคนในรอบ — คิดแยกทีละคนแล้วค่อยรวม เพราะโควต้า/โบนัส
+/** สรุปเงินของทุกคนในรอบ — คิดแยกทีละคนแล้วค่อยรวม เพราะโบนัส
  *  เป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน · เรียงคนถูกหักมากสุดขึ้นก่อน */
 export function buildSettlement(
   employees: Employee[],
@@ -93,9 +92,7 @@ export function buildSettlement(
         (lv) => lv.employeeId === emp.id && leaveOverlapsMonth(lv, period),
       );
       const deduction = getLeaveDeduction(empLeaves, calendar, period);
-      const bonus = hasPerfectAttendance(empLeaves, calendar, period)
-        ? BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS
-        : 0;
+      const bonus = getLeaveBonus(empLeaves, calendar, period).total;
       return {
         id: emp.id,
         name: emp.nickname || emp.name,

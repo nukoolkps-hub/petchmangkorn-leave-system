@@ -1,5 +1,4 @@
 import {
-  AlertOctagon as IconAlertOctagon,
   Briefcase as IconBriefcase,
   CalendarDays as IconCalendar,
   CalendarRange as IconCalendarRange,
@@ -299,21 +298,19 @@ export default function LeaveSummaryPanel({
               const sickDays = monthLeaves
                 .filter((lv) => lv.type === "sick")
                 .reduce((s, lv) => s + lv.days, 0);
-              // bug fix: เดิม `totalTimes > 2` เปรียบเทียบจำนวน "ใบลา" ไม่ใช่
-              // จำนวน "วัน" → 1 ใบลา 4 วันธรรมดา ก็ไม่แดง · ที่ถูกต้องคือ
-              // เปรียบเทียบจำนวน "วันธรรมดา" กับโควต้าใน BUSINESS_RULES
-              const overQuota = weekdays > BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
-              // ยอดหักของคนนี้ในเดือนนี้ — clamp ด้วย effectiveMonth เพื่อให้
-              // ใบลาคร่อมเดือนคิดเฉพาะวันของเดือนที่กำลังดู
+              // ยอดหักของคนนี้ในรอบนี้ — clamp ด้วย period เพื่อให้ใบลา
+              // คร่อมรอบคิดเฉพาะวันของรอบที่กำลังดู
               const deduction = getLeaveDeduction(
                 monthLeaves,
                 storeCalendar,
                 period,
               );
+              // ไม่มีโควต้าวันฟรีแล้ว — แดงเมื่อมียอดหักจริง
+              const hasDeduction = deduction.total > 0;
               return (
                 <div
                   key={empId}
-                  className={`px-3.5 py-3 rounded-xl border ${overQuota ? "bg-red-lt border-[#C0392B30]" : "bg-cream border-bdr"}`}
+                  className={`px-3.5 py-3 rounded-xl border ${hasDeduction ? "bg-red-lt border-[#C0392B30]" : "bg-cream border-bdr"}`}
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <AvatarCircle
@@ -332,7 +329,7 @@ export default function LeaveSummaryPanel({
                     </div>
                     <div className="text-right">
                       <div
-                        className={`font-extrabold text-lg ${overQuota ? "text-red" : "text-maroon"}`}
+                        className={`font-extrabold text-lg ${hasDeduction ? "text-red" : "text-maroon"}`}
                       >
                         {totalDays}{" "}
                         <span className="text-xs font-medium text-txt-soft">
@@ -343,12 +340,6 @@ export default function LeaveSummaryPanel({
                         weekdays={weekdays}
                         sundays={sundays}
                       />
-                      {overQuota && (
-                        <div className="text-xs text-red font-bold inline-flex items-center gap-1 mt-0.5">
-                          <IconAlertOctagon size={11} strokeWidth={2.4} />
-                          เกินโควต้า
-                        </div>
-                      )}
                       <DeductionSummary
                         deduction={deduction}
                         variant="compact"

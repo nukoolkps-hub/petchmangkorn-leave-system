@@ -1,5 +1,5 @@
 /* ─── DeductionSummary — กล่องสรุป "ยอดถูกหัก" จากการลา ──────────
-   ใช้ร่วมกันทั้งการ์ดโควต้าหน้าแรก · ฟอร์มยื่นลา · modal ยืนยัน
+   ใช้ร่วมกันทั้งการ์ดสรุปหน้าแรก · ฟอร์มยื่นลา · modal ยืนยัน
    เพื่อให้ตัวเลขและถ้อยคำตรงกันทุกที่
 
    ตัวเลขทั้งหมดต้องมาจาก getLeaveDeduction() / getAdditionalDeduction()
@@ -20,7 +20,7 @@ interface Props {
   title?: string;
   /** compact = แถวเดียวเล็ก ๆ (ใช้ในลิสต์) · card = กล่องเต็ม (default) */
   variant?: "card" | "compact";
-  /** โบนัสไม่ลาที่จะเสียไป (บาท) — รวมเข้ายอดหัวกล่องด้วย
+  /** โบนัสที่จะเสียไป (บาท) — รวมเข้ายอดหัวกล่องด้วย
    *  ใช้ในฟอร์มยื่นลา เพื่อให้เห็นว่า "ใบนี้ทำให้เสียเงินรวมเท่าไร" */
   bonusLost?: number;
 }
@@ -60,8 +60,8 @@ export default function DeductionSummary({
           <div className="flex items-center justify-between text-xs text-txt-mid">
             <span className="inline-flex items-center gap-1.5">
               <IconCalendarRange size={12} strokeWidth={2.4} />
-              วันธรรมดาเกินโควต้า {weekdayDays} วัน ×{" "}
-              {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION}
+              วันธรรมดา {weekdayDays} วัน ×{" "}
+              {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION}
             </span>
             <span className="font-bold">{formatBaht(weekdayAmount)}</span>
           </div>

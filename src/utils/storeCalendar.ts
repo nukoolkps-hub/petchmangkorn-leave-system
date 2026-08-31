@@ -29,7 +29,7 @@ export function isStoreClosed(
   return (calendar?.extraClosedWeekdays || []).includes(ymd);
 }
 
-/** วันที่ ymd = "วันทำงานที่ลานับโควต้า" หรือไม่
+/** วันที่ ymd = "วันทำงานที่ลาแล้วถูกหักอัตราวันธรรมดา" หรือไม่
  *  = ร้านเปิด AND ไม่ใช่อาทิตย์ (อาทิตย์มีกฎหักแยก)                      */
 export function isQuotaCountableDay(
   ymd: string,

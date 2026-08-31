@@ -2,8 +2,8 @@
    ขึ้นก่อนยื่นใบลาจริง — สรุปประเภท/ช่วงวัน/จำนวนวัน + ยอดที่จะถูกหัก
    ให้พนักงานยืนยันก่อน เพื่อกันการกดผิด · เปิดเฉพาะเมื่อ validate ผ่านแล้ว
 
-   ลาวันอาทิตย์ = หักทันทีทุกวัน (ไม่มีโควต้าช่วย) → บังคับติ๊กยืนยัน
-   ก่อนกดส่งได้ กันกดผ่านโดยไม่ทันอ่าน                                 */
+   ลาวันอาทิตย์ = หักแพงที่สุด (วันละ SUNDAY_LEAVE_DEDUCTION) → บังคับ
+   ติ๊กยืนยันก่อนกดส่งได้ กันกดผ่านโดยไม่ทันอ่าน                        */
 
 import {
   CalendarRange as IconCalendarRange,
@@ -11,7 +11,7 @@ import {
   Sun as IconSun,
 } from "lucide-react";
 import { useState } from "react";
-import { LEAVE_TYPES } from "../../constants";
+import { BUSINESS_RULES, LEAVE_TYPES } from "../../constants";
 import { fmtDate } from "../../utils/dateUtils";
 import { formatBaht } from "../../utils/format";
 import type { RequestImpact } from "../../utils/leaveUtils";
@@ -105,12 +105,12 @@ export default function SubmitLeaveConfirmModal({
               ลาวันอาทิตย์ {deduction.sundayDays} วัน
             </span>
             <br />
-            รับทราบว่าจะถูกหัก {formatBaht(deduction.sundayAmount)} (วันอาทิตย์หักทันที
-            ไม่มีโควต้า)
+            รับทราบว่าจะถูกหัก {formatBaht(deduction.sundayAmount)} (วันอาทิตย์หัก วันละ{" "}
+            {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท)
             {bonusLost > 0 && (
               <>
                 <br />
-                และเสียโบนัสไม่ลาอีก {formatBaht(bonusLost)}
+                และเสียโบนัสอีก {formatBaht(bonusLost)}
               </>
             )}
           </span>
