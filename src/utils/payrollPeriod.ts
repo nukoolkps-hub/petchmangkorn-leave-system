@@ -121,3 +121,25 @@ export function periodKeysInRange(
   }
   return keys;
 }
+
+/** รอบทั้งหมดที่ "มีใบลาแตะ" + รอบที่ระบุเพิ่ม · เรียงใหม่→เก่า
+ *
+ *  ใช้ทำลิสต์เดือนให้ admin เลือกดู · ต้องแปลงเป็น key ของ "รอบ" ไม่ใช่
+ *  เดือนปฏิทินของ `lv.start` — ไม่งั้นรอบที่กำลังสะสมอยู่จะหายจากลิสต์
+ *  (ปิดรอบ ส.ค. วันที่ 27 แล้วลาวันที่ 29 → ใบนี้อยู่รอบ "2026-09" แต่
+ *   `lv.start.slice(0,7)` ได้ "2026-08" → เลือกดูรอบ ก.ย. ไม่ได้เลย)
+ *
+ *  ใบลาคร่อมรอบนับเข้าทุกรอบที่มันแตะ                                    */
+export function periodKeysForLeaves(
+  leaves: { start: string; end: string }[],
+  cutoffs?: PeriodCutoffs | null,
+  alwaysInclude: string[] = [],
+): string[] {
+  const keys = new Set(alwaysInclude.filter(Boolean));
+  for (const lv of leaves) {
+    for (const key of periodKeysInRange(lv.start, lv.end, cutoffs)) {
+      keys.add(key);
+    }
+  }
+  return [...keys].sort().reverse();
+}

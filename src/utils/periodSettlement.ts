@@ -62,7 +62,8 @@ export interface PeriodSnapshot {
   closedAt: number;
   /** วันที่กดปิดรอบ (YYYY-MM-DD ตามเครื่อง admin) */
   closedOn: string;
-  /** ตั้งแต่วันนี้เป็นต้นไปยอดถึงจะล็อก = closedOn + 1 วัน */
+  /** ตั้งแต่วันนี้เป็นต้นไปยอดถึงจะล็อก
+   *  = วันถัดจาก "วันที่มาทีหลัง" ระหว่างวันที่กดปิดรอบกับวันสุดท้ายของรอบ */
   lockedFrom: string;
   /** true = ยังไม่ถึงเวลาล็อก · ตัวเลขที่โชว์ต้องเป็นยอดสด ไม่ใช่ชุดนี้ */
   pending: boolean;
@@ -143,7 +144,13 @@ export function makeSnapshot(
     end: period.end,
     closedAt: opts.closedAt ?? Date.now(),
     closedOn: opts.closedOn,
-    lockedFrom: opts.lockedFrom ?? addDaysYmd(opts.closedOn, 1),
+    // ล็อกได้ต่อเมื่อพ้นทั้ง "วันที่กดปิดรอบ" และ "วันสุดท้ายของรอบ"
+    // — admin กดปิดรอบล่วงหน้าได้ (เช่นกดวันที่ 20 ตัดรอบวันที่ 31) ถ้าดูแค่
+    //   วันที่กด ยอดจะล็อกตั้งแต่วันที่ 21 แล้ววันลา 22-31 จะตกหายไปจากยอด
+    //   ที่ล็อกไว้ ทั้งที่ยังอยู่ในรอบนั้น
+    lockedFrom:
+      opts.lockedFrom ??
+      addDaysYmd(opts.closedOn > period.end ? opts.closedOn : period.end, 1),
     pending: opts.pending,
     rows: settlement.rows,
     totals: settlement.totals,

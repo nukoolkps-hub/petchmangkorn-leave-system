@@ -12,10 +12,12 @@ import {
   Settings as IconSettings,
   Terminal as IconTerminal,
   Users as IconUsers,
+  Wallet as IconWallet,
 } from "lucide-react";
 
 export type AdminSectionId =
   | "summary"
+  | "period-settlement"
   | "leaves"
   | "roles"
   | "calendar-view"
@@ -63,6 +65,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     Icon: IconCalendarEvent,
     items: [
       { id: "summary", label: "สรุปลา", Icon: IconChartBar },
+      { id: "period-settlement", label: "สรุปรอบจ่าย", Icon: IconWallet },
       { id: "leaves", label: "เพิ่ม - ลบ การลา", Icon: IconClipboardList },
     ],
   },

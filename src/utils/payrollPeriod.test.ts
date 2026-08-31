@@ -6,6 +6,7 @@ import {
   isPeriodClosed,
   lastDayOfMonth,
   periodKeyForDate,
+  periodKeysForLeaves,
   periodKeysInRange,
   prevYearMonth,
 } from "./payrollPeriod";
@@ -135,5 +136,56 @@ describe("periodKeyForDate / periodKeysInRange", () => {
   it("returns nothing for an empty or reversed range", () => {
     expect(periodKeysInRange("", "", cutoffs)).toEqual([]);
     expect(periodKeysInRange("2026-08-10", "2026-08-01", cutoffs)).toEqual([]);
+  });
+});
+
+describe("periodKeysForLeaves", () => {
+  it("คืนรอบที่มีใบลา เรียงใหม่→เก่า", () => {
+    expect(
+      periodKeysForLeaves([
+        { start: "2026-06-10", end: "2026-06-10" },
+        { start: "2026-08-03", end: "2026-08-03" },
+      ]),
+    ).toEqual(["2026-08", "2026-06"]);
+  });
+
+  it("รวมรอบที่สั่งให้มีเสมอ แม้ไม่มีใบลา", () => {
+    expect(periodKeysForLeaves([], undefined, ["2026-09"])).toEqual([
+      "2026-09",
+    ]);
+  });
+
+  it("ใบลาหลังวันตัด ตกเข้ารอบถัดไป ไม่ใช่เดือนของ start", () => {
+    // ปิดรอบ ส.ค. วันที่ 27 → ลาวันที่ 29 ส.ค. อยู่ในรอบ ก.ย.
+    const cutoffs = { "2026-08": "2026-08-27" };
+    expect(
+      periodKeysForLeaves(
+        [{ start: "2026-08-29", end: "2026-08-29" }],
+        cutoffs,
+      ),
+    ).toEqual(["2026-09"]);
+  });
+
+  it("ใบลาคร่อมรอบนับเข้าทั้งสองรอบ", () => {
+    const cutoffs = { "2026-08": "2026-08-27" };
+    expect(
+      periodKeysForLeaves(
+        [{ start: "2026-08-26", end: "2026-08-29" }],
+        cutoffs,
+      ),
+    ).toEqual(["2026-09", "2026-08"]);
+  });
+
+  it("ไม่ซ้ำเมื่อหลายใบตกรอบเดียวกัน", () => {
+    expect(
+      periodKeysForLeaves(
+        [
+          { start: "2026-06-10", end: "2026-06-10" },
+          { start: "2026-06-20", end: "2026-06-20" },
+        ],
+        undefined,
+        ["2026-06"],
+      ),
+    ).toEqual(["2026-06"]);
   });
 });

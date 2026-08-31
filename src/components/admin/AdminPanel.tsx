@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { COLORS } from "../../constants";
+import usePeriodLock from "../../hooks/usePeriodLock";
 import { todayYmd } from "../../utils/dateUtils";
 import TeamCalendar from "../home/TeamCalendar";
 import {
@@ -13,6 +14,7 @@ import LeaveListPanel from "./LeaveListPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
 import LineBotCommandsPanel from "./LineBotCommandsPanel";
 import LineBotNotificationsPanel from "./LineBotNotificationsPanel";
+import PeriodSettlementPanel from "./PeriodSettlementPanel";
 import StoreCalendarPanel from "./StoreCalendarPanel";
 
 /* ─── Admin Panel (main container) ─────────────────────────────── */
@@ -40,6 +42,17 @@ export default function AdminPanel({
   unsavedDirty,
   onUnsavedDirtyChange,
 }) {
+  /* ล็อกยอดรอบที่ถึงเวลาแล้ว — วางไว้ที่ AdminPanel ไม่ใช่ใน section
+     "สรุปรอบจ่าย" เพราะต้องทำงานทุกครั้งที่ admin เปิดแอป ไม่ใช่เฉพาะตอน
+     บังเอิญเปิด section นั้น */
+  usePeriodLock({
+    employeeDirectory,
+    allLeaves,
+    storeCalendar,
+    periodSnapshots,
+    onFinalizePeriod,
+  });
+
   function tryChangeSection(newId: AdminSectionId) {
     if (newId === section) return;
     onSectionChange(newId);
@@ -175,9 +188,21 @@ export default function AdminPanel({
         {/* ── LINE BOT > COMMANDS section ── */}
         {section === "linebot-commands" && <LineBotCommandsPanel />}
 
-        {/* ── SUMMARY section ── */}
+        {/* ── SUMMARY section (ใครลาไปกี่วัน) ── */}
         {section === "summary" && (
           <LeaveSummaryPanel
+            allLeaves={allLeaves}
+            employeeDirectory={employeeDirectory}
+            storeCalendar={storeCalendar}
+            periodCutoffs={periodCutoffs}
+            selectedMonth={adminMonth}
+            onSelectMonth={setAdminMonth}
+          />
+        )}
+
+        {/* ── PERIOD SETTLEMENT section (จ่ายเงินรอบนี้เท่าไหร่) ── */}
+        {section === "period-settlement" && (
+          <PeriodSettlementPanel
             allLeaves={allLeaves}
             employeeDirectory={employeeDirectory}
             storeCalendar={storeCalendar}
@@ -186,7 +211,6 @@ export default function AdminPanel({
             onClosePeriod={onClosePeriod}
             onReopenPeriod={onReopenPeriod}
             onRelockPeriod={onRelockPeriod}
-            onFinalizePeriod={onFinalizePeriod}
             showToast={showToast}
             selectedMonth={adminMonth}
             onSelectMonth={setAdminMonth}

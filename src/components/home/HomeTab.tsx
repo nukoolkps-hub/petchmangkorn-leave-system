@@ -245,9 +245,13 @@ export default function HomeTab({
         )}
       </div>
 
-      {/* leave type mini stats — นับ "วันลา" จากปฏิทิน แยกตามประเภท ·
-          ตัดวันร้านปิด (เสาร์ปิด/วันปิดพิเศษ) ออก เพราะลาวันร้านปิด
-          ไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ · ไม่เกี่ยวกับยอดหัก */}
+      {/* leave type mini stats — นับ "วันลา" แยกตามประเภท ตัดวันร้านปิดออก
+          (ลาวันร้านปิดไม่นับ · วันอาทิตย์ที่ร้านเปิดยังนับ) · ไม่เกี่ยวกับยอดหัก
+
+          ⚠️ ต้องนับตาม "รอบ" เดียวกับการ์ดด้านบน — เดิมกรองด้วย
+          `startsWith(yearMonth)` ซึ่ง yearMonth เป็น key ของ "รอบ" ไม่ใช่
+          เดือนปฏิทิน · ปิดรอบ ส.ค. วันที่ 27 แล้วลาวันที่ 29 → การ์ดบนนับเข้า
+          รอบ ก.ย. ถูกแล้ว แต่ชิปไปหาใบลาที่ขึ้นต้นด้วย "2026-09" จึงได้ 0 */}
       <div className="grid grid-cols-2 gap-2.5 mb-1.5">
         {LEAVE_TYPES.map((lt) => {
           const usedType = profile
@@ -256,15 +260,15 @@ export default function HomeTab({
                   (lv) =>
                     lv.employeeId === profile.id &&
                     lv.type === lt.id &&
-                    lv.start.slice(0, 7) <= yearMonth &&
-                    lv.end.slice(0, 7) >= yearMonth,
+                    leaveOverlapsMonth(lv, period),
                 )
                 .reduce(
                   (sum, lv) =>
                     sum +
                     dateRange(lv.start, lv.end).filter(
                       (d) =>
-                        d.startsWith(yearMonth) &&
+                        d >= period.start &&
+                        d <= period.end &&
                         !isStoreClosed(d, storeCalendar),
                     ).length,
                   0,
@@ -284,7 +288,8 @@ export default function HomeTab({
               <div>
                 <div className="text-sm font-semibold text-txt">{lt.label}</div>
                 <div className="text-sm text-txt-soft mt-px">
-                  เดือนนี้ <b style={{ color: lt.color }}>{usedType}</b> วัน
+                  {periodIsPlainMonth ? "เดือนนี้" : "รอบนี้"}{" "}
+                  <b style={{ color: lt.color }}>{usedType}</b> วัน
                 </div>
               </div>
             </div>

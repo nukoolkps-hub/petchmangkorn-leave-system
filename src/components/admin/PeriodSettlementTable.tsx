@@ -20,6 +20,7 @@ import {
   AlertTriangle as IconWarn,
 } from "lucide-react";
 import { useState } from "react";
+import { MAX_LEAVE_BONUS } from "../../constants";
 import { fmtShort, toYMD } from "../../utils/dateUtils";
 import { formatBaht } from "../../utils/format";
 import type { LeavePeriod } from "../../utils/payrollPeriod";
@@ -64,7 +65,10 @@ function buildCopyText(
         detail.push(`ธรรมดาเกินโควต้า ${r.deduction.weekdayDays} วัน`);
       if (r.deduction.sundayDays > 0)
         detail.push(`อาทิตย์ ${r.deduction.sundayDays} วัน`);
-      if (r.bonus > 0) detail.push("ไม่ลาเลย");
+      // แยกให้ชัดว่าได้โบนัสก้อนไหน — ไม่งั้นคนลาวันอาทิตย์จะถูกเขียนว่า
+      // "อาทิตย์ 1 วัน · ไม่ลาเลย" ซึ่งขัดกันเอง
+      if (r.bonus >= MAX_LEAVE_BONUS) detail.push("ไม่ลาเลย");
+      else if (r.bonus > 0) detail.push("ไม่ลาวันธรรมดา");
       const sign = r.net > 0 ? "+" : "";
       return `${r.name}: ${sign}${r.net.toLocaleString("th-TH")} บาท${
         detail.length ? ` (${detail.join(" · ")})` : ""
