@@ -61,7 +61,7 @@ function buildCopyText(
     ...rows.map((r) => {
       const detail: string[] = [];
       if (r.deduction.weekdayDays > 0)
-        detail.push(`วันธรรมดา ${r.deduction.weekdayDays} วัน`);
+        detail.push(`ธรรมดาเกินโควต้า ${r.deduction.weekdayDays} วัน`);
       if (r.deduction.sundayDays > 0)
         detail.push(`อาทิตย์ ${r.deduction.sundayDays} วัน`);
       if (r.bonus > 0) detail.push("ไม่ลาเลย");

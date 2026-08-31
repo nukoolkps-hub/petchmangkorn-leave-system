@@ -22,7 +22,7 @@ import {
 import type { LeaveEntry, StoreCalendar } from "../../types";
 import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
-  getDeductibleLeaveDays,
+  getCountedLeaveDays,
   getRequestImpact,
   hasPerfectAttendance,
   leaveOverlapsMonth,
@@ -198,16 +198,21 @@ export default function RequestTab({
   }, [myLeaves]);
 
   /* ─── Quota status for this month — count weekday days (Mon-Fri)
-       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกหักคนละอัตรา */
+       1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกคนละอัตรา ไม่ใช้โควต้า */
   const monthLeavesForQuota = profile
     ? allLeaves.filter(
         (lv: LeaveEntry) =>
           lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentPeriod),
       )
     : [];
-  const { weekdays: usedWeekdays, sundays: usedSundays } =
-    getDeductibleLeaveDays(monthLeavesForQuota, storeCalendar, currentPeriod);
+  const { weekdays: usedWeekdays, sundays: usedSundays } = getCountedLeaveDays(
+    monthLeavesForQuota,
+    storeCalendar,
+    currentPeriod,
+  );
   const usedDays = usedWeekdays + usedSundays;
+  const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+  const freeLeft = Math.max(0, quota - usedWeekdays);
 
   /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
      คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — ใบใหม่อาจทับวันกับใบเดิม
@@ -232,12 +237,12 @@ export default function RequestTab({
     <div>
       {/* สถานะการลาของรอบนี้ */}
       <div
-        className={`rounded-xl px-4 py-3 mb-5 flex items-center gap-3 border-[1.5px] ${usedDays > 0 ? "bg-[#FEF2F2] border-[#C0392B50]" : "bg-gold-pale border-[#C9973A50]"}`}
+        className={`rounded-xl px-4 py-3 mb-5 flex items-center gap-3 border-[1.5px] ${freeLeft === 0 ? "bg-[#FEF2F2] border-[#C0392B50]" : "bg-gold-pale border-[#C9973A50]"}`}
       >
         <div
-          className={`shrink-0 ${usedDays > 0 ? "text-red" : "text-maroon"}`}
+          className={`shrink-0 ${freeLeft === 0 ? "text-red" : "text-maroon"}`}
         >
-          {usedDays > 0 ? (
+          {freeLeft === 0 ? (
             <IconAlertTriangle size={26} strokeWidth={2.2} />
           ) : (
             <IconClipboardList size={26} strokeWidth={2.2} />
@@ -245,9 +250,12 @@ export default function RequestTab({
         </div>
         <div className="flex-1">
           <div
-            className={`font-bold text-sm ${usedDays > 0 ? "text-red" : "text-maroon"}`}
+            className={`font-bold text-sm ${freeLeft === 0 ? "text-red" : "text-maroon"}`}
           >
             {usedDays > 0 ? `รอบนี้ลาไปแล้ว ${usedDays} วัน` : "รอบนี้ยังไม่ได้ลาเลย"}
+            {freeLeft > 0
+              ? ` · ลาวันธรรมดาฟรีได้อีก ${freeLeft} วัน`
+              : " · ใช้โควต้าวันธรรมดาครบแล้ว"}
           </div>
           {bonusStillAvailable && (
             <div className="text-sm font-semibold text-amber mt-0.5 inline-flex items-start gap-1.5">
@@ -257,20 +265,21 @@ export default function RequestTab({
                 className="mt-0.5 shrink-0"
               />
               <span>
-                ลาวันธรรมดา 1 วัน = เสียโบนัส{" "}
-                {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท เพิ่มจากค่าหัก
+                ลาวันธรรมดา 1 วันแรกไม่ถูกหัก แต่ทำให้เสียโบนัส{" "}
+                {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท
               </span>
             </div>
           )}
           <div className="text-xs text-txt-soft mt-0.5">
-            วันธรรมดาหัก {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION} บาท/วัน ·
-            วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน ·
+            วันธรรมดา: ฟรี {quota} วัน/รอบ · เกินหัก{" "}
+            {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท/วัน · วันอาทิตย์หัก{" "}
+            {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน (ไม่ใช้โควต้า) ·
             วันที่ร้านปิดไม่นับ
           </div>
         </div>
         <div className="text-right shrink-0">
           <div
-            className={`text-xl font-extrabold ${usedDays > 0 ? "text-red" : "text-gold"}`}
+            className={`text-xl font-extrabold ${freeLeft === 0 ? "text-red" : "text-gold"}`}
           >
             {usedDays}
           </div>

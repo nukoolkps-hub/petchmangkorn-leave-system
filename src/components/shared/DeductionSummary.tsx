@@ -60,8 +60,8 @@ export default function DeductionSummary({
           <div className="flex items-center justify-between text-xs text-txt-mid">
             <span className="inline-flex items-center gap-1.5">
               <IconCalendarRange size={12} strokeWidth={2.4} />
-              วันธรรมดา {weekdayDays} วัน ×{" "}
-              {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION}
+              วันธรรมดาเกินโควต้า {weekdayDays} วัน ×{" "}
+              {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION}
             </span>
             <span className="font-bold">{formatBaht(weekdayAmount)}</span>
           </div>

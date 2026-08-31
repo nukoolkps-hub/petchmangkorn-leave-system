@@ -356,7 +356,7 @@ export default function LeaveSummaryPanel({
                 storeCalendar,
                 period,
               );
-              // ไม่มีโควต้าวันฟรีแล้ว — แดงเมื่อมียอดหักจริง
+              // แดงเมื่อมียอดหักจริง (ลาในโควต้ายังไม่ถูกหัก จึงไม่แดง)
               const hasDeduction = deduction.total > 0;
               return (
                 <div

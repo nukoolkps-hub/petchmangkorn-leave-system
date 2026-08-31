@@ -4,12 +4,14 @@ import {
   AlertOctagon as IconAlertOctagon,
   AlertTriangle as IconAlertTriangle,
   CircleCheck as IconCircleCheck,
+  ClipboardList as IconClipboardList,
   Wallet as IconWallet,
 } from "lucide-react";
 import { BUSINESS_RULES, LEAVE_TYPES, MAX_LEAVE_BONUS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { dateRange, fmtShort } from "../../utils/dateUtils";
 import {
+  getCountedLeaveDays,
   getMonthlySettlement,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
@@ -52,8 +54,7 @@ export default function HomeTab({
   const periodIsPlainMonth = isCalendarMonth(yearMonth, period);
 
   /* ─── ยอดเงินของรอบนี้ ────────────────────────────────────────
-     ไม่มีโควต้าวันฟรีแล้ว — ลาวันธรรมดาวันแรกก็ถูกหัก · นับเป็น "วัน"
-     ไม่ใช่จำนวนใบลา (1 ใบลา 4 วันธรรมดา = 4 วัน)                      */
+     นับเป็น "วัน" ไม่ใช่จำนวนใบลา (1 ใบลา 4 วันธรรมดา = 4 วัน)         */
   const monthLeaves = profile
     ? allLeaves.filter(
         (lv) => lv.employeeId === profile.id && leaveOverlapsMonth(lv, period),
@@ -64,8 +65,17 @@ export default function HomeTab({
     storeCalendar,
     period,
   );
-  const { weekdayDays, sundayDays } = deduction;
+  /* วันลา "ดิบ" สำหรับโชว์ — ไม่ใช่ deduction.weekdayDays ซึ่งหักโควต้า
+     ออกไปแล้ว (ลา 1 วันในโควต้า → deduction.weekdayDays = 0 แต่พนักงาน
+     ต้องเห็นว่าลาไปแล้ว 1 วัน และโบนัสหลุดไปแล้ว)                      */
+  const { weekdays: weekdayDays, sundays: sundayDays } = getCountedLeaveDays(
+    monthLeaves,
+    storeCalendar,
+    period,
+  );
   const totalLeaveDays = weekdayDays + sundayDays;
+  const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+  const freeLeft = Math.max(0, quota - weekdayDays);
   const hasDeduction = deduction.total > 0;
 
   return (
@@ -131,15 +141,40 @@ export default function HomeTab({
               </span>
             </div>
           )}
-          {weekdayDays > 0 && (
-            <div className="bg-red-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
-              <IconAlertOctagon
+          {weekdayDays > 0 &&
+            (deduction.weekdayDays > 0 ? (
+              <div className="bg-red-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
+                <IconAlertOctagon
+                  size={14}
+                  strokeWidth={2.4}
+                  className="text-red"
+                />
+                <span className="text-sm font-semibold text-red">
+                  ลาวันธรรมดา {weekdayDays} วัน — เกินโควต้า {deduction.weekdayDays}{" "}
+                  วัน
+                </span>
+              </div>
+            ) : (
+              <div className="bg-cream rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5 border border-bdr">
+                <IconClipboardList
+                  size={14}
+                  strokeWidth={2.4}
+                  className="text-txt-mid"
+                />
+                <span className="text-sm font-semibold text-txt-mid">
+                  ลาวันธรรมดา {weekdayDays} วัน (ในโควต้า ไม่ถูกหัก)
+                </span>
+              </div>
+            ))}
+          {freeLeft > 0 && totalLeaveDays > 0 && (
+            <div className="bg-green-lt rounded-[20px] px-3.5 py-[5px] flex items-center gap-1.5">
+              <IconCircleCheck
                 size={14}
                 strokeWidth={2.4}
-                className="text-red"
+                className="text-green"
               />
-              <span className="text-sm font-semibold text-red">
-                ลาวันธรรมดา {weekdayDays} วัน
+              <span className="text-sm font-semibold text-green">
+                ลาวันธรรมดาฟรีได้อีก {freeLeft} วัน
               </span>
             </div>
           )}
@@ -156,8 +191,9 @@ export default function HomeTab({
             </div>
           )}
           <div className="w-full text-xs text-txt-soft mt-1">
-            วันธรรมดาหัก {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION} บาท/วัน ·
-            วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน ·
+            วันธรรมดา: ฟรี {quota} วัน/รอบ · เกินหัก{" "}
+            {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท/วัน · วันอาทิตย์หัก{" "}
+            {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION} บาท/วัน (ไม่ใช้โควต้า) ·
             วันที่ร้านปิดไม่นับ
           </div>
         </div>
@@ -171,8 +207,8 @@ export default function HomeTab({
         {/* โบนัส — เขียวถ้ายังได้อยู่ (ก้อนใดก้อนหนึ่ง) · เทาถ้าหลุดหมด */}
         <BonusNote bonus={bonusDetail} showLost />
 
-        {/* เตือนล่วงหน้าตอนยังสะอาด — ลาวันแรกแพงกว่าที่คิด เพราะเสีย
-            ทั้งค่าหักและโบนัส */}
+        {/* เตือนล่วงหน้าตอนยังสะอาด — วันลาวันแรกไม่ถูกหักก็จริง แต่แพงที่สุด
+            เพราะทำให้เสียโบนัสทั้งก้อน */}
         {totalLeaveDays === 0 && (
           <div className="mt-3 bg-linear-to-br from-red/6 to-red/9 rounded-xl px-3.5 py-2.5 border border-red/19 flex items-center gap-2.5">
             <IconWallet
@@ -181,13 +217,28 @@ export default function HomeTab({
               className="text-red shrink-0"
             />
             <div className="text-sm text-red font-semibold leading-relaxed">
-              ลาวันธรรมดา 1 วัน = หัก{" "}
+              ลาวันธรรมดา 1 วัน = <span className="font-bold">ไม่ถูกหัก</span>{" "}
+              (อยู่ในโควต้า) แต่{" "}
               <span className="font-bold">
-                {BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION} บาท
-              </span>{" "}
-              และเสียโบนัสอีก{" "}
+                เสียโบนัส {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* เตือนเมื่อใช้โควต้าครบแล้วแต่ยังไม่มียอดหัก — วันธรรมดาวันถัดไปหัก */}
+        {weekdayDays >= quota && deduction.weekdayDays === 0 && (
+          <div className="mt-3 bg-linear-to-br from-red/6 to-red/9 rounded-xl px-3.5 py-2.5 border border-red/19 flex items-center gap-2.5">
+            <IconWallet
+              size={22}
+              strokeWidth={2.2}
+              className="text-red shrink-0"
+            />
+            <div className="text-sm text-red font-semibold leading-relaxed">
+              ใช้โควต้าครบแล้ว — ลาวันธรรมดาครั้งถัดไป
               <span className="font-bold">
-                {MAX_LEAVE_BONUS.toLocaleString("th-TH")} บาท
+                {" "}
+                หัก {BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท/วัน
               </span>
             </div>
           </div>

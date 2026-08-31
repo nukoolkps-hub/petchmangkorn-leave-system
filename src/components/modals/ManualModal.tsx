@@ -17,7 +17,8 @@ import { Box, Card, Section } from "../shared/Layout";
 /* ─── Manual / User Guide Modal ──────────────────────────────────
    อัตราหัก/โบนัสดึงจาก BUSINESS_RULES เสมอ — ห้าม hardcode
    ไม่งั้นคู่มือกับระบบจะพูดคนละเรื่องตอนร้านปรับกฎ                     */
-const WEEKDAY_FINE = BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION;
+const QUOTA = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+const WEEKDAY_FINE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
 const SUNDAY_FINE = BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION;
 const WEEKDAY_BONUS = BUSINESS_RULES.NO_WEEKDAY_LEAVE_BONUS;
 const TOPUP = BUSINESS_RULES.PERFECT_ATTENDANCE_TOPUP;
@@ -54,23 +55,32 @@ export default function ManualModal({ onClose }) {
           }
           color={COLORS.maroon}
         >
-          <p>
-            <b>ทุกวันที่ลาถูกหัก</b> — ไม่มีวันลาฟรีแล้ว · คิดเป็น "วัน" ไม่ใช่จำนวนใบลา
-            (ใบเดียวลายาว 3 วัน = 3 วัน)
-          </p>
+          <p>คิดเป็น "วัน" ไม่ใช่จำนวนใบลา (ใบเดียวลายาว 3 วัน = 3 วัน)</p>
           <ul className="mt-1.5">
             <li>
-              ลา <b>วันธรรมดา</b> → หัก{" "}
+              ลา <b>วันธรรมดา</b> → <b>ฟรี {QUOTA} วัน/รอบ</b> · เกินจากนั้นหัก{" "}
               <b className="text-red">{WEEKDAY_FINE} บาท/วัน</b>
             </li>
             <li>
               ลา <b>วันอาทิตย์</b> → หัก{" "}
-              <b className="text-red">{SUNDAY_FINE} บาท/วัน</b>
+              <b className="text-red">{SUNDAY_FINE} บาท/วัน</b> ตั้งแต่วันแรก
+              (โควต้าวันธรรมดาไม่ช่วย)
             </li>
             <li>
               ลา <b>วันที่ร้านปิด</b> → ไม่นับ ไม่หัก
             </li>
           </ul>
+          <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
+            <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">
+              <IconAlertTriangle size={14} strokeWidth={2.4} />
+              "ฟรี" = ไม่ถูกหักเงิน แต่ยังเสียโบนัส
+            </div>
+            <p className="text-xs leading-[1.9]">
+              ลาวันธรรมดา <b>วันแรกไม่ถูกหักเงิน</b> ก็จริง แต่ทำให้{" "}
+              <b>เสียโบนัสทั้ง 2 ก้อน</b> ({BONUS.toLocaleString("th-TH")} บาท) ทันที —
+              วันแรกจึงเป็นวันที่ <b>แพงที่สุด</b> ไม่ใช่ถูกที่สุด
+            </p>
+          </Box>
 
           <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
             <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">
@@ -83,7 +93,7 @@ export default function ManualModal({ onClose }) {
                 <b className="text-green">+{WEEKDAY_BONUS} บาท</b>
                 <br />
                 <span className="text-xs text-txt-soft">
-                  ลาวันอาทิตย์ไม่ทำให้เสียก้อนนี้
+                  ลาวันอาทิตย์ไม่ทำให้เสียก้อนนี้ · แต่ลาวันธรรมดาแม้อยู่ในโควต้าก็เสีย
                 </span>
               </li>
               <li>
@@ -113,13 +123,16 @@ export default function ManualModal({ onClose }) {
                 <b className="text-red">−{SUNDAY_FINE - WEEKDAY_BONUS}</b>
               </li>
               <li>
-                ลาวันธรรมดา 1 วัน → <b className="text-red">−{WEEKDAY_FINE}</b>{" "}
-                (เสียโบนัสทั้ง 2 ก้อนด้วย)
+                ลาวันธรรมดา 1 วัน (ในโควต้า) → ไม่ถูกหัก แต่ไม่ได้โบนัส = <b>0</b>
+              </li>
+              <li>
+                ลาวันธรรมดา 2 วัน → เกินโควต้า 1 วัน ={" "}
+                <b className="text-red">−{WEEKDAY_FINE}</b>
               </li>
               <li>
                 ลาวันธรรมดา 2 + อาทิตย์ 1 →{" "}
                 <b className="text-red">
-                  −{(WEEKDAY_FINE * 2 + SUNDAY_FINE).toLocaleString("th-TH")}
+                  −{(WEEKDAY_FINE + SUNDAY_FINE).toLocaleString("th-TH")}
                 </b>
               </li>
             </ul>
@@ -233,11 +246,11 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                ลาวันไหนก็ <b>หัก</b>{" "}
-                <b className="text-red">{WEEKDAY_FINE} บาท/วัน</b> ไม่มีวันฟรี
+                มี <b>โควต้าฟรี {QUOTA} วัน/รอบ</b> · เกินจากนั้นหัก{" "}
+                <b className="text-red">{WEEKDAY_FINE} บาท/วัน</b>
               </li>
               <li>
-                ลาแม้วันเดียวก็ <b>เสียโบนัสทั้ง 2 ก้อน</b> (
+                ลาแม้วันเดียว (อยู่ในโควต้า) ก็ <b>เสียโบนัสทั้ง 2 ก้อน</b> (
                 <b className="text-green">
                   {BONUS.toLocaleString("th-TH")} บาท
                 </b>
@@ -296,7 +309,8 @@ export default function ManualModal({ onClose }) {
           >
             <ul>
               <li>
-                นับตาม <b>รอบจ่าย</b> · แยกป้ายวันธรรมดากับวันอาทิตย์ เพราะคนละอัตรา
+                นับตาม <b>รอบจ่าย</b> · แยกป้ายวันธรรมดากับวันอาทิตย์ เพราะคนละอัตรา ·
+                บอกด้วยว่าเหลือโควต้าฟรีอีกกี่วัน
               </li>
               <li>โชว์ยอดสุทธิของรอบ (ค่าหัก + โบนัส) เป็นตัวเลขใหญ่มุมขวา</li>
             </ul>
@@ -332,7 +346,7 @@ export default function ManualModal({ onClose }) {
             <p>
               ใบลาที่ตรง/คร่อม <b>วันอาทิตย์ที่ร้านเปิด</b> จะมีป้าย{" "}
               <b>"อาทิตย์ −{SUNDAY_FINE}"</b> เตือนว่าวันนั้นถูกหัก {SUNDAY_FINE} บาท
-              ไม่ใช่ {WEEKDAY_FINE} บาทเหมือนวันธรรมดา
+              ตั้งแต่วันแรก และไม่กินโควต้าวันธรรมดา
             </p>
           </Box>
         </Section>
@@ -402,7 +416,7 @@ export default function ManualModal({ onClose }) {
             </li>
             <li>
               <b>ลากิจ</b> — ลาล่วงหน้าได้ ไม่ติดเพดาน 2 อาทิตย์เหมือนลาป่วย
-              (คิดค่าหักเหมือนกัน)
+              (ใช้โควต้า/คิดค่าหักเหมือนกัน)
             </li>
           </ul>
         </Section>

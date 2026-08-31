@@ -37,7 +37,8 @@ function leave(employeeId: string, start: string, end = start): LeaveEntry {
   };
 }
 
-const WEEKDAY_RATE = BUSINESS_RULES.WEEKDAY_LEAVE_DEDUCTION;
+const QUOTA = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
+const WEEKDAY_RATE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
 const FULL_BONUS =
   BUSINESS_RULES.NO_WEEKDAY_LEAVE_BONUS +
   BUSINESS_RULES.PERFECT_ATTENDANCE_TOPUP;
@@ -45,21 +46,21 @@ const FULL_BONUS =
 describe("buildSettlement", () => {
   it("โบนัสให้คนที่ไม่ลาเลย · หักคนที่ลาวันธรรมดา", () => {
     const employees = [emp("a", "เอ"), emp("b", "บี")];
-    // เอลาวันธรรมดา 2 วัน (หักทั้ง 2 วัน) · บีไม่ลาเลย
+    // เอลาวันธรรมดา 2 วัน (โควต้า 1 → หัก 1 วัน) · บีไม่ลาเลย
     const leaves = [leave("a", "2026-06-08"), leave("a", "2026-06-09")];
     const { rows, totals } = buildSettlement(employees, leaves, null, JUNE);
 
     const a = rows.find((r) => r.id === "a");
     const b = rows.find((r) => r.id === "b");
-    expect(a?.deduction.weekdayDays).toBe(2);
+    expect(a?.deduction.weekdayDays).toBe(2 - QUOTA);
     expect(a?.bonus).toBe(0);
-    expect(a?.net).toBe(-2 * WEEKDAY_RATE);
+    expect(a?.net).toBe(-(2 - QUOTA) * WEEKDAY_RATE);
     expect(b?.bonus).toBe(FULL_BONUS);
     expect(b?.net).toBe(FULL_BONUS);
 
-    expect(totals.deducted).toBe(2 * WEEKDAY_RATE);
+    expect(totals.deducted).toBe((2 - QUOTA) * WEEKDAY_RATE);
     expect(totals.bonus).toBe(FULL_BONUS);
-    expect(totals.net).toBe(FULL_BONUS - 2 * WEEKDAY_RATE);
+    expect(totals.net).toBe(FULL_BONUS - (2 - QUOTA) * WEEKDAY_RATE);
   });
 
   it("ใช้ชื่อเล่นก่อน แล้วค่อย fallback ชื่อจริง", () => {
@@ -86,11 +87,11 @@ describe("buildSettlement", () => {
 
   it("นับเฉพาะวันที่อยู่ในขอบรอบ — ใบลาคร่อมรอบถูก clamp", () => {
     const employees = [emp("a")];
-    // ลา 8-12 มิ.ย. แต่รอบจบวันที่ 9 → นับแค่ 8, 9 = 2 วัน
+    // ลา 8-12 มิ.ย. แต่รอบจบวันที่ 9 → นับแค่ 8, 9 = 2 วัน (หัก 1 วัน)
     const closed: LeavePeriod = { start: "2026-06-01", end: "2026-06-09" };
     const leaves = [leave("a", "2026-06-08", "2026-06-12")];
     const { rows } = buildSettlement(employees, leaves, null, closed);
-    expect(rows[0].deduction.weekdayDays).toBe(2);
+    expect(rows[0].deduction.weekdayDays).toBe(2 - QUOTA);
   });
 });
 
@@ -105,7 +106,7 @@ describe("makeSnapshot", () => {
       buildSettlement(employees, leaves, null, JUNE),
       { closedOn: "2026-06-30", pending: false, closedAt: 1_780_000_000_000 },
     );
-    expect(snapshot.totals.deducted).toBe(2 * WEEKDAY_RATE);
+    expect(snapshot.totals.deducted).toBe((2 - QUOTA) * WEEKDAY_RATE);
     expect(snapshot.start).toBe("2026-06-01");
     expect(snapshot.end).toBe("2026-06-30");
     expect(snapshot.closedAt).toBe(1_780_000_000_000);
@@ -113,8 +114,8 @@ describe("makeSnapshot", () => {
     // admin ปิดร้านวันที่ 9 ย้อนหลัง → ยอด "สด" ลดลง แต่ snapshot ต้องเท่าเดิม
     const cal = { extraClosedWeekdays: ["2026-06-09"] } as StoreCalendar;
     const live = buildSettlement(employees, leaves, cal, JUNE);
-    expect(live.totals.deducted).toBe(WEEKDAY_RATE);
-    expect(snapshot.totals.deducted).toBe(2 * WEEKDAY_RATE);
+    expect(live.totals.deducted).toBe(0);
+    expect(snapshot.totals.deducted).toBe((2 - QUOTA) * WEEKDAY_RATE);
   });
 });
 
@@ -134,15 +135,15 @@ describe("diffSettlement", () => {
   });
 
   it("จับได้เมื่อยอดของคนเดิมเปลี่ยนหลังปิดรอบ", () => {
-    // ลบใบลาใบที่สองออกหลังปิดรอบ → เอถูกหักน้อยลง 1 วัน
+    // ลบใบลาใบที่สองออกหลังปิดรอบ → เอเหลือ 1 วัน (อยู่ในโควต้า ไม่ถูกหัก)
     const live = buildSettlement(employees, [leaves[0]], null, JUNE);
     const drift = diffSettlement(snapshot, live);
     expect(drift).toHaveLength(1);
     expect(drift[0]).toMatchObject({
       id: "a",
       name: "เอ",
-      lockedNet: -2 * WEEKDAY_RATE,
-      liveNet: -WEEKDAY_RATE,
+      lockedNet: -(2 - QUOTA) * WEEKDAY_RATE,
+      liveNet: 0,
     });
   });
 
