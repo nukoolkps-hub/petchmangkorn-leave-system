@@ -86,7 +86,7 @@ export default function HomeTab({
         <div className="relative flex items-center justify-between mb-3.5">
           <div>
             <div className="font-bold text-maroon text-base">
-              โควต้าการลาเดือนนี้
+              {periodIsPlainMonth ? "โควต้าการลาเดือนนี้" : "โควต้าการลารอบนี้"}
             </div>
             <div className="text-sm text-txt-soft mt-0.5">
               {periodIsPlainMonth ? (
@@ -202,7 +202,10 @@ export default function HomeTab({
         </div>
 
         {/* ยอดหักจริงของเดือนนี้ — โชว์เฉพาะเมื่อมียอด */}
-        <DeductionSummary deduction={deduction} title="ยอดถูกหักเดือนนี้" />
+        <DeductionSummary
+          deduction={deduction}
+          title={periodIsPlainMonth ? "ยอดถูกหักเดือนนี้" : "ยอดถูกหักรอบนี้"}
+        />
 
         {/* โบนัสไม่ลา — เขียวถ้ายังสะอาด · เทาถ้าหลุดไปแล้ว */}
         <BonusNote bonus={bonus} showLost={deduction.total === 0} />

@@ -31,10 +31,10 @@ export default function BonusNote({
         <div className="flex-1">
           <div className="font-bold text-sm text-green inline-flex items-center gap-1.5">
             <IconGift size={15} strokeWidth={2.4} />
-            โบนัสไม่ลาทั้งเดือน
+            โบนัสไม่ลาทั้งรอบ
           </div>
           <div className="text-xs text-txt-soft mt-0.5">
-            {pending ? "ยังไม่ได้ลาเดือนนี้ — ลาเมื่อไหร่โบนัสหายทันที" : "ไม่ได้ลาเลยทั้งเดือน"}
+            {pending ? "ยังไม่ได้ลาในรอบนี้ — ลาเมื่อไหร่โบนัสหายทันที" : "ไม่ได้ลาเลยทั้งรอบ"}
           </div>
         </div>
         <div className="text-lg font-extrabold text-green shrink-0">
@@ -49,8 +49,7 @@ export default function BonusNote({
   return (
     <div className="text-xs text-txt-soft mt-2 inline-flex items-center gap-1.5">
       <IconGift size={12} strokeWidth={2.2} />
-      เดือนนี้ลาแล้ว — ไม่ได้โบนัส{" "}
-      {formatBaht(BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS)}
+      รอบนี้ลาแล้ว — ไม่ได้โบนัส {formatBaht(BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS)}
     </div>
   );
 }

@@ -247,7 +247,7 @@ export default function RequestTab({
           >
             {overQuota
               ? `หมดโควต้าแล้ว — วันธรรมดาหักวันละ ${BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION} บาท`
-              : `โควต้าเดือนนี้เหลือ ${rem} วัน`}
+              : `โควต้ารอบนี้เหลือ ${rem} วัน`}
           </div>
           {bonusStillAvailable && (
             <div className="text-sm font-semibold text-amber mt-0.5 inline-flex items-start gap-1.5">
@@ -257,7 +257,7 @@ export default function RequestTab({
                 className="mt-0.5 shrink-0"
               />
               <span>
-                ยังไม่ลาเดือนนี้ — ลาแม้อยู่ในโควต้าก็เสียโบนัส{" "}
+                ยังไม่ลาในรอบนี้ — ลาแม้อยู่ในโควต้าก็เสียโบนัส{" "}
                 {BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS.toLocaleString(
                   "th-TH",
                 )}{" "}
@@ -266,7 +266,7 @@ export default function RequestTab({
             </div>
           )}
           <div className="text-sm text-txt-soft mt-0.5">
-            ลากิจ + ลาป่วย รวม {quota} วัน/เดือน
+            ลากิจ + ลาป่วย รวม {quota} วัน/รอบ
           </div>
           <div className="text-xs text-txt-soft mt-0.5">
             นับเฉพาะวันธรรมดา · วันอาทิตย์หัก {BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION}{" "}
