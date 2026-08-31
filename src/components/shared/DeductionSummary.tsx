@@ -20,15 +20,19 @@ interface Props {
   title?: string;
   /** compact = แถวเดียวเล็ก ๆ (ใช้ในลิสต์) · card = กล่องเต็ม (default) */
   variant?: "card" | "compact";
+  /** โบนัสไม่ลาที่จะเสียไป (บาท) — รวมเข้ายอดหัวกล่องด้วย
+   *  ใช้ในฟอร์มยื่นลา เพื่อให้เห็นว่า "ใบนี้ทำให้เสียเงินรวมเท่าไร" */
+  bonusLost?: number;
 }
 
 export default function DeductionSummary({
   deduction,
   title = "ยอดที่ถูกหัก",
   variant = "card",
+  bonusLost = 0,
 }: Props) {
-  const { weekdayDays, sundayDays, weekdayAmount, sundayAmount, total } =
-    deduction;
+  const { weekdayDays, sundayDays, weekdayAmount, sundayAmount } = deduction;
+  const total = deduction.total + bonusLost;
   if (total <= 0) return null;
 
   if (variant === "compact") {

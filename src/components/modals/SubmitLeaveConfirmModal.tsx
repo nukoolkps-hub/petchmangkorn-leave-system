@@ -11,10 +11,10 @@ import {
   Sun as IconSun,
 } from "lucide-react";
 import { useState } from "react";
-import { BUSINESS_RULES, LEAVE_TYPES } from "../../constants";
+import { LEAVE_TYPES } from "../../constants";
 import { fmtDate } from "../../utils/dateUtils";
 import { formatBaht } from "../../utils/format";
-import type { LeaveDeduction } from "../../utils/leaveUtils";
+import type { RequestImpact } from "../../utils/leaveUtils";
 import BaseModal from "../shared/BaseModal";
 import DeductionSummary from "../shared/DeductionSummary";
 import Spinner from "../shared/Spinner";
@@ -24,8 +24,8 @@ interface Props {
   startDate: string;
   endDate: string;
   days: number;
-  /** ยอดที่ใบลานี้จะถูกหักเพิ่ม (จาก getAdditionalDeduction) */
-  deduction: LeaveDeduction;
+  /** ผลกระทบเป็นเงินของใบลานี้ (จาก getRequestImpact) — ค่าหัก + โบนัสที่เสีย */
+  impact: RequestImpact;
   saving?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -36,12 +36,13 @@ export default function SubmitLeaveConfirmModal({
   startDate,
   endDate,
   days,
-  deduction,
+  impact,
   saving = false,
   onConfirm,
   onCancel,
 }: Props) {
   const lt = LEAVE_TYPES.find((t) => t.id === type);
+  const { deduction, bonusLost } = impact;
   const needsSundayAck = deduction.sundayDays > 0;
   const [sundayAcked, setSundayAcked] = useState(false);
   const blocked = needsSundayAck && !sundayAcked;
@@ -76,7 +77,11 @@ export default function SubmitLeaveConfirmModal({
         <br />
         <span className="text-sm text-txt-soft">({days} วันทำการ)</span>
       </div>
-      <DeductionSummary deduction={deduction} title="ใบลานี้จะถูกหัก" />
+      <DeductionSummary
+        deduction={deduction}
+        bonusLost={bonusLost}
+        title={bonusLost > 0 ? "ใบลานี้จะเสียรวม" : "ใบลานี้จะถูกหัก"}
+      />
 
       {needsSundayAck && (
         <button
@@ -100,11 +105,14 @@ export default function SubmitLeaveConfirmModal({
               ลาวันอาทิตย์ {deduction.sundayDays} วัน
             </span>
             <br />
-            รับทราบว่าจะถูกหัก{" "}
-            {formatBaht(
-              deduction.sundayDays * BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION,
-            )}{" "}
-            (วันอาทิตย์หักทันที ไม่มีโควต้า)
+            รับทราบว่าจะถูกหัก {formatBaht(deduction.sundayAmount)} (วันอาทิตย์หักทันที
+            ไม่มีโควต้า)
+            {bonusLost > 0 && (
+              <>
+                <br />
+                และเสียโบนัสไม่ลาอีก {formatBaht(bonusLost)}
+              </>
+            )}
           </span>
         </button>
       )}

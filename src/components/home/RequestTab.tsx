@@ -17,7 +17,7 @@ import type { LeaveEntry, StoreCalendar } from "../../types";
 import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
-  getAdditionalDeduction,
+  getRequestImpact,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
 import { isStoreClosed, isSunday } from "../../utils/storeCalendar";
@@ -198,7 +198,7 @@ export default function RequestTab({
   /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
      คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — โควต้าเป็นของทั้งเดือน
      ถ้าเดือนนี้ใช้โควต้าหมดแล้ว วันธรรมดาวันแรกของใบใหม่ก็โดนหักเลย */
-  const pendingDeduction = getAdditionalDeduction(
+  const pendingImpact = getRequestImpact(
     myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
     { start: form.startDate, end: form.endDate },
     storeCalendar,
@@ -345,7 +345,11 @@ export default function RequestTab({
         </div>
       )}
       {days > 0 && (
-        <DeductionSummary deduction={pendingDeduction} title="ใบลานี้จะถูกหัก" />
+        <DeductionSummary
+          deduction={pendingImpact.deduction}
+          bonusLost={pendingImpact.bonusLost}
+          title={pendingImpact.bonusLost > 0 ? "ใบลานี้จะเสียรวม" : "ใบลานี้จะถูกหัก"}
+        />
       )}
       {errors.over && (
         <div className="text-red text-sm mx-0 mt-1 mb-2.5 inline-flex items-center gap-1">
@@ -376,7 +380,7 @@ export default function RequestTab({
           startDate={form.startDate}
           endDate={form.endDate}
           days={days}
-          deduction={pendingDeduction}
+          impact={pendingImpact}
           saving={submittingLeave}
           onConfirm={handleConfirmSubmit}
           onCancel={() => setShowSubmitConfirm(false)}

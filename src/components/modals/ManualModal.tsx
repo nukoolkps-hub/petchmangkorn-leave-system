@@ -5,6 +5,7 @@ import {
   CalendarClock as IconCalendarClock,
   CalendarRange as IconCalendarRange,
   ClipboardList as IconClipboardList,
+  Gift as IconGift,
   Store as IconStore,
   Sun as IconSun,
 } from "lucide-react";
@@ -18,6 +19,8 @@ import { Box, Card, Section } from "../shared/Layout";
 const QUOTA = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
 const WEEKDAY_FINE = BUSINESS_RULES.OVER_QUOTA_WEEKDAY_DEDUCTION;
 const SUNDAY_FINE = BUSINESS_RULES.SUNDAY_LEAVE_DEDUCTION;
+const SINGLE_SUNDAY_FINE = BUSINESS_RULES.SINGLE_SUNDAY_ONLY_DEDUCTION;
+const BONUS = BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS;
 
 export default function ManualModal({ onClose }) {
   return (
@@ -67,6 +70,32 @@ export default function ManualModal({ onClose }) {
               ลา <b>วันที่ร้านปิด</b> → ไม่นับ ไม่หัก
             </li>
           </ul>
+
+          <Box bg={COLORS.creamDark} border={`${COLORS.gold}40`}>
+            <div className="flex items-center gap-1.5 text-maroon font-bold mb-1">
+              <IconGift size={14} strokeWidth={2.4} />
+              เงื่อนไขพิเศษ 2 ข้อ (คิดจากทั้งเดือน)
+            </div>
+            <ul>
+              <li>
+                <b>ลาอาทิตย์วันเดียว + ไม่ลาวันธรรมดาเลย</b> → หักแค่{" "}
+                <b className="text-red">{SINGLE_SUNDAY_FINE} บาท</b> แทน{" "}
+                {SUNDAY_FINE}
+                <br />
+                <span className="text-xs text-txt-soft">
+                  ลาอาทิตย์ 2 วันขึ้นไป → กลับไปคิด {SUNDAY_FINE} บาททุกวัน
+                </span>
+              </li>
+              <li>
+                <b>ไม่ลาเลยทั้งเดือน</b> → ได้เพิ่ม{" "}
+                <b className="text-green">+{BONUS} บาท</b>
+                <br />
+                <span className="text-xs text-txt-soft">
+                  ลาแค่วันเดียวก็หลุด แม้จะอยู่ในโควต้า · ลาวันร้านปิดไม่ทำให้เสียโบนัส
+                </span>
+              </li>
+            </ul>
+          </Box>
         </Section>
 
         <Section

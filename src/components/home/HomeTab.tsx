@@ -12,10 +12,11 @@ import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { dateRange } from "../../utils/dateUtils";
 import {
   countWeekdayLeaves,
-  getLeaveDeduction,
+  getMonthlySettlement,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
 import { isStoreClosed } from "../../utils/storeCalendar";
+import BonusNote from "../shared/BonusNote";
 import DeductionSummary from "../shared/DeductionSummary";
 import { MemphisCornerSticker } from "../shared/MemphisPattern";
 import TeamCalendar from "./TeamCalendar";
@@ -54,8 +55,8 @@ export default function HomeTab({
   );
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
   const remaining = quota - usedThisMonth;
-  // ยอดหักเดือนนี้ — วันธรรมดาที่เกินโควต้า + วันอาทิตย์ที่ลา (หักทันที)
-  const deduction = getLeaveDeduction(
+  // ยอดสุทธิเดือนนี้ — ค่าหัก (วันธรรมดาเกินโควต้า + วันอาทิตย์) และโบนัสไม่ลา
+  const { deduction, bonus } = getMonthlySettlement(
     monthLeavesForQuota,
     storeCalendar,
     yearMonth,
@@ -182,6 +183,9 @@ export default function HomeTab({
 
         {/* ยอดหักจริงของเดือนนี้ — โชว์เฉพาะเมื่อมียอด */}
         <DeductionSummary deduction={deduction} title="ยอดถูกหักเดือนนี้" />
+
+        {/* โบนัสไม่ลา — เขียวถ้ายังสะอาด · เทาถ้าหลุดไปแล้ว */}
+        <BonusNote bonus={bonus} showLost={deduction.total === 0} />
 
         {/* เตือนล่วงหน้าเมื่อโควต้าหมดแล้วแต่ยังไม่มียอดหัก */}
         {usedThisMonth >= quota && deduction.total === 0 && (

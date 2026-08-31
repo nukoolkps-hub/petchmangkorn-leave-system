@@ -133,6 +133,8 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | ประเภทการลา | ลากิจ (`personal`) · ลาป่วย (`sick`) |
 | หักวันธรรมดาที่เกินโควต้า | 300 บาท/วัน |
 | หักวันอาทิตย์ (ร้านเปิด) | 500 บาท/วัน — หักทันที ไม่ใช้โควต้า |
+| อัตราผ่อนผัน: อาทิตย์ 1 วัน + ไม่ลาวันธรรมดาเลย | 200 บาท (แทน 500) |
+| โบนัสไม่มีวันลาที่นับเลยทั้งเดือน | +1,000 บาท |
 
 ค่าทั้งหมดอยู่ใน `src/constants.ts` → `BUSINESS_RULES`
 
@@ -150,14 +152,30 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | อาทิตย์ (ร้านเปิด) | × `SUNDAY_LEAVE_DEDUCTION` ทุกวัน ไม่ใช้โควต้า |
 | วันร้านปิดทุกกรณี | ไม่นับ ไม่หัก |
 
+**เงื่อนไขพิเศษรายเดือน 2 ข้อ** — ตัดสินจาก "ทั้งเดือน" ไม่ใช่รายวัน:
+
+1. **อัตราผ่อนผันอาทิตย์วันเดียว** — ลาอาทิตย์ **1 วันพอดี** และ **ไม่ลาวันธรรมดา
+   เลย** (วันในโควต้าก็นับว่าลา) → หัก `SINGLE_SUNDAY_ONLY_DEDUCTION` แทน
+   · ลาอาทิตย์ 2 วันขึ้นไป → กลับไปคิดเต็มอัตราทุกวัน ไม่ใช่วันแรกถูกวันหลังแพง
+2. **โบนัสไม่ลา** — เดือนไหนไม่มีวันลาที่นับเลย (ทั้งธรรมดาและอาทิตย์)
+   → `PERFECT_ATTENDANCE_BONUS` · ลาวันร้านปิดไม่ทำให้เสียโบนัส ·
+   ลาแค่วันเดียวแม้อยู่ในโควต้าก็หลุดโบนัสทันที
+
 **Single source: `src/utils/leaveUtils.ts`** — ห้ามคูณอัตราเองใน component
 
 - `getLeaveDeduction(leaves, calendar, yearMonth)` → ยอดหักของชุดใบลา
-  (ใส่ `yearMonth` เสมอเมื่อคิดรายเดือน เพื่อ clamp ใบลาคร่อมเดือน)
-- `getAdditionalDeduction(existing, candidate, calendar)` → ยอดที่ใบลา
+  (ใส่ `yearMonth` เสมอเมื่อคิดรายเดือน เพื่อ clamp ใบลาคร่อมเดือน ·
+  กฎผ่อนผันอาทิตย์วันเดียวรวมอยู่ในนี้แล้ว)
+- `hasPerfectAttendance(leaves, calendar, yearMonth)` → เดือนนั้นได้โบนัสไหม
+- `getMonthlySettlement(leaves, calendar, yearMonth)` → `{ deduction, bonus, net }`
+  ยอดสุทธิของเดือน (`net > 0` = ได้เงินเพิ่ม · `< 0` = ถูกหัก)
+- `getAdditionalDeduction(existing, candidate, calendar)` → ยอดหักที่ใบลา
   **ใบใหม่** จะเพิ่ม คิดเป็นส่วนต่างจากใบเดิม (โควต้าเป็นของทั้งเดือน)
-- render ผ่าน `<DeductionSummary />` (`src/components/shared/`) ทุกที่
-  เพื่อให้ถ้อยคำ/ตัวเลขตรงกัน
+- `getRequestImpact(existing, candidate, calendar)` → `{ deduction, bonusLost,
+  total }` ผลกระทบเป็นเงินทั้งหมดของใบใหม่ — **ใช้ตัวนี้ในฟอร์มยื่นลา**
+  เพราะใบแรกของเดือนอาจไม่ถูกหักเลยแต่ทำให้เสียโบนัส 1,000
+- render ผ่าน `<DeductionSummary />` + `<BonusNote />`
+  (`src/components/shared/`) ทุกที่ เพื่อให้ถ้อยคำ/ตัวเลขตรงกัน
 
 แก้อัตราหรือโควต้า → แก้ที่ `BUSINESS_RULES` ที่เดียว แล้วรัน `npm test`
 (เทสต์ล็อก "จำนวนวันที่ถูกหัก" ไว้ ไม่ได้ hardcode ตัวเลขบาท)

@@ -5,7 +5,10 @@ import {
   countWeekdayLeaves,
   getAdditionalDeduction,
   getLeaveDeduction,
+  getMonthlySettlement,
   getOverQuotaDays,
+  getRequestImpact,
+  hasPerfectAttendance,
   leaveOverlapsMonth,
 } from "./leaveUtils";
 
@@ -159,14 +162,20 @@ describe("getLeaveDeduction", () => {
   });
 
   it("charges the Sunday rate from the very first Sunday — quota does not apply", () => {
-    const res = getLeaveDeduction([{ start: "2026-06-07", end: "2026-06-07" }]);
-    expect(res).toEqual({
-      weekdayDays: 0,
-      sundayDays: 1,
-      weekdayAmount: 0,
-      sundayAmount: SUNDAY_RATE,
-      total: SUNDAY_RATE,
-    });
+    // Mon 08 กินโควต้าไป (ไม่ถูกหัก) แต่ Sun 07 ยังโดนเต็มอัตรา
+    // (โควต้าวันธรรมดาไม่ช่วยวันอาทิตย์ · และมีวันธรรมดาแล้ว → ไม่เข้ากฎผ่อนผัน)
+    const res = getLeaveDeduction(
+      [
+        { start: "2026-06-07", end: "2026-06-07" },
+        { start: "2026-06-08", end: "2026-06-08" },
+      ],
+      null,
+      "2026-06",
+    );
+    expect(res.weekdayDays).toBe(0);
+    expect(res.weekdayAmount).toBe(0);
+    expect(res.sundayDays).toBe(1);
+    expect(res.sundayAmount).toBe(SUNDAY_RATE);
   });
 
   it("adds both kinds of charge together", () => {
@@ -220,12 +229,13 @@ describe("getAdditionalDeduction", () => {
   });
 
   it("charges a Sunday even when the quota is untouched", () => {
+    // อาทิตย์ไม่ใช้โควต้าวันธรรมดา — ลาวันเดียวโดยไม่แตะวันธรรมดาเข้ากฎผ่อนผัน
     const res = getAdditionalDeduction([], {
       start: "2026-06-07",
       end: "2026-06-07",
     });
     expect(res.sundayDays).toBe(1);
-    expect(res.total).toBe(SUNDAY_RATE);
+    expect(res.total).toBe(BUSINESS_RULES.SINGLE_SUNDAY_ONLY_DEDUCTION);
   });
 
   it("only bills the increment the new leave adds, not the existing total", () => {
@@ -267,5 +277,169 @@ describe("getAdditionalDeduction", () => {
       getAdditionalDeduction([], { start: "2026-06-10", end: "2026-06-08" })
         .total,
     ).toBe(0);
+  });
+});
+
+// ── กฎผ่อนผัน: อาทิตย์วันเดียว + ไม่ลาวันธรรมดาเลย ──────────────
+const SINGLE_SUNDAY_RATE = BUSINESS_RULES.SINGLE_SUNDAY_ONLY_DEDUCTION;
+const BONUS = BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS;
+
+describe("single-Sunday concession", () => {
+  it("charges the reduced rate for one Sunday with no weekday leave", () => {
+    // Sun 07 only
+    const res = getLeaveDeduction(
+      [{ start: "2026-06-07", end: "2026-06-07" }],
+      null,
+      "2026-06",
+    );
+    expect(res.sundayDays).toBe(1);
+    expect(res.sundayAmount).toBe(SINGLE_SUNDAY_RATE);
+    expect(res.total).toBe(SINGLE_SUNDAY_RATE);
+  });
+
+  it("falls back to the full rate on every Sunday once there are two", () => {
+    // Sun 07 + Sun 14 → ไม่ใช่ 200 + 500 แต่เป็น 500 × 2
+    const res = getLeaveDeduction(
+      [
+        { start: "2026-06-07", end: "2026-06-07" },
+        { start: "2026-06-14", end: "2026-06-14" },
+      ],
+      null,
+      "2026-06",
+    );
+    expect(res.sundayDays).toBe(2);
+    expect(res.sundayAmount).toBe(2 * SUNDAY_RATE);
+  });
+
+  it("does not apply when a weekday was also taken — even inside the quota", () => {
+    // Mon 08 ใช้โควต้า (ไม่ถูกหัก) แต่ยังถือว่า "ลาวันธรรมดา" → อาทิตย์คิดเต็ม
+    const res = getLeaveDeduction(
+      [
+        { start: "2026-06-07", end: "2026-06-07" },
+        { start: "2026-06-08", end: "2026-06-08" },
+      ],
+      null,
+      "2026-06",
+    );
+    expect(res.weekdayAmount).toBe(0); // วันธรรมดายังอยู่ในโควต้า
+    expect(res.sundayAmount).toBe(SUNDAY_RATE);
+    expect(res.total).toBe(SUNDAY_RATE);
+  });
+
+  it("ignores leave on a Sunday the store is closed", () => {
+    const cal = { extraClosedSundays: ["2026-06-07"] } as StoreCalendar;
+    const res = getLeaveDeduction(
+      [{ start: "2026-06-07", end: "2026-06-07" }],
+      cal,
+      "2026-06",
+    );
+    expect(res.total).toBe(0);
+  });
+
+  it("judges each month on its own for a cross-month leave", () => {
+    // May: Fri 29 (weekday) + Sun 31 → มีวันธรรมดา → อาทิตย์คิดเต็ม
+    const crossLeave = [{ start: "2026-05-29", end: "2026-06-03" }];
+    expect(getLeaveDeduction(crossLeave, null, "2026-05").sundayAmount).toBe(
+      SUNDAY_RATE,
+    );
+  });
+});
+
+// ── โบนัสไม่ลาทั้งเดือน ────────────────────────────────────────
+describe("hasPerfectAttendance / getMonthlySettlement", () => {
+  it("pays the bonus when the month has no leave at all", () => {
+    const res = getMonthlySettlement([], null, "2026-06");
+    expect(res.bonus).toBe(BONUS);
+    expect(res.deduction.total).toBe(0);
+    expect(res.net).toBe(BONUS);
+  });
+
+  it("keeps the bonus when the only leave falls on days the store is closed", () => {
+    // Sat 06 ปิดตามปกติ → ไม่นับเป็นวันลา
+    const res = getMonthlySettlement(
+      [{ start: "2026-06-06", end: "2026-06-06" }],
+      null,
+      "2026-06",
+    );
+    expect(res.bonus).toBe(BONUS);
+    expect(res.net).toBe(BONUS);
+  });
+
+  it("loses the bonus on a single weekday leave, even inside the quota", () => {
+    const res = getMonthlySettlement(
+      [{ start: "2026-06-08", end: "2026-06-08" }],
+      null,
+      "2026-06",
+    );
+    expect(res.bonus).toBe(0);
+    expect(res.deduction.total).toBe(0); // อยู่ในโควต้า ไม่ถูกหัก
+    expect(res.net).toBe(0); // แต่ก็ไม่ได้โบนัส
+  });
+
+  it("nets the concession rate against the lost bonus for one Sunday", () => {
+    const res = getMonthlySettlement(
+      [{ start: "2026-06-07", end: "2026-06-07" }],
+      null,
+      "2026-06",
+    );
+    expect(res.bonus).toBe(0);
+    expect(res.net).toBe(-SINGLE_SUNDAY_RATE);
+  });
+
+  it("only counts the month asked for", () => {
+    const may = [{ start: "2026-05-11", end: "2026-05-11" }];
+    expect(hasPerfectAttendance(may, null, "2026-05")).toBe(false);
+    expect(hasPerfectAttendance(may, null, "2026-06")).toBe(true);
+  });
+});
+
+// ── ผลกระทบของใบลาใบใหม่ (ฟอร์มยื่นลา) ─────────────────────────
+describe("getRequestImpact", () => {
+  it("counts the lost bonus when the month was still clean", () => {
+    // ยังไม่เคยลาเดือนนี้ → ลาวันธรรมดา 1 วัน: ไม่ถูกหัก แต่เสียโบนัส
+    const res = getRequestImpact([], {
+      start: "2026-06-08",
+      end: "2026-06-08",
+    });
+    expect(res.deduction.total).toBe(0);
+    expect(res.bonusLost).toBe(BONUS);
+    expect(res.total).toBe(BONUS);
+  });
+
+  it("does not charge the bonus twice once it is already lost", () => {
+    const existing = [{ start: "2026-06-08", end: "2026-06-08" }];
+    const res = getRequestImpact(existing, {
+      start: "2026-06-09",
+      end: "2026-06-09",
+    });
+    expect(res.bonusLost).toBe(0);
+    expect(res.deduction.total).toBe(WEEKDAY_RATE); // วันที่ 2 เกินโควต้า
+    expect(res.total).toBe(WEEKDAY_RATE);
+  });
+
+  it("adds the concession charge and the lost bonus for one Sunday", () => {
+    const res = getRequestImpact([], {
+      start: "2026-06-07",
+      end: "2026-06-07",
+    });
+    expect(res.deduction.total).toBe(SINGLE_SUNDAY_RATE);
+    expect(res.bonusLost).toBe(BONUS);
+    expect(res.total).toBe(SINGLE_SUNDAY_RATE + BONUS);
+  });
+
+  it("keeps the bonus when the request only covers closed days", () => {
+    const res = getRequestImpact([], {
+      start: "2026-06-06",
+      end: "2026-06-06",
+    });
+    expect(res.total).toBe(0);
+  });
+
+  it("loses the bonus in both months for a cross-month request", () => {
+    const res = getRequestImpact([], {
+      start: "2026-05-29",
+      end: "2026-06-03",
+    });
+    expect(res.bonusLost).toBe(2 * BONUS);
   });
 });

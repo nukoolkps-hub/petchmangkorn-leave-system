@@ -7,6 +7,8 @@ const {
   WEEKDAY_LEAVE_QUOTA,
   OVER_QUOTA_WEEKDAY_DEDUCTION,
   SUNDAY_LEAVE_DEDUCTION,
+  SINGLE_SUNDAY_ONLY_DEDUCTION,
+  PERFECT_ATTENDANCE_BONUS,
 } = BUSINESS_RULES;
 
 /** วันที่ลาควรนับเข้า "วันธรรมดา" (โควต้า) ไหม
@@ -142,7 +144,11 @@ const EMPTY_DEDUCTION: LeaveDeduction = {
 };
 
 /** ยอดหักของ "ชุดใบลา" ชุดหนึ่ง · ระบุ yearMonth เพื่อ clamp ใบลาคร่อมเดือน
- *  ให้แต่ละเดือนคิดเฉพาะวันของตัวเอง (โควต้าเป็นรายเดือน) */
+ *  ให้แต่ละเดือนคิดเฉพาะวันของตัวเอง (โควต้า + กฎผ่อนผันเป็นรายเดือน)
+ *
+ *  กฎผ่อนผัน: ลาอาทิตย์ "วันเดียว" และไม่ได้ลาวันธรรมดาเลย → หักแค่
+ *  SINGLE_SUNDAY_ONLY_DEDUCTION · ถ้าลาอาทิตย์ 2 วันขึ้นไป กลับไปคิด
+ *  เต็มอัตราทุกวัน (ไม่ใช่วันแรกถูกวันหลังแพง)                          */
 export function getLeaveDeduction(
   monthLeaves: { start: string; end: string }[],
   calendar?: StoreCalendar | null,
@@ -153,8 +159,15 @@ export function getLeaveDeduction(
     calendar,
     yearMonth,
   );
+  // จำนวนวันธรรมดาที่ลา "จริง" (ไม่ใช่เฉพาะส่วนที่เกินโควต้า) — กฎผ่อนผัน
+  // ต้องการ "ไม่ลาวันธรรมดาเลย" ซึ่งวันในโควต้าก็ถือว่าลาแล้ว
+  const weekdayLeaveDays = countWeekdayLeaves(monthLeaves, calendar, yearMonth);
+  const eligibleForSingleSundayRate = sundays === 1 && weekdayLeaveDays === 0;
+
   const weekdayAmount = weekdays * OVER_QUOTA_WEEKDAY_DEDUCTION;
-  const sundayAmount = sundays * SUNDAY_LEAVE_DEDUCTION;
+  const sundayAmount = eligibleForSingleSundayRate
+    ? SINGLE_SUNDAY_ONLY_DEDUCTION
+    : sundays * SUNDAY_LEAVE_DEDUCTION;
   return {
     weekdayDays: weekdays,
     sundayDays: sundays,
@@ -162,6 +175,39 @@ export function getLeaveDeduction(
     sundayAmount,
     total: weekdayAmount + sundayAmount,
   };
+}
+
+/** เดือนนี้ "ไม่มีวันลาที่นับเลย" ไหม — วันที่ร้านปิดไม่นับ จึงลาวันร้านปิด
+ *  ได้โดยไม่เสียโบนัส */
+export function hasPerfectAttendance(
+  monthLeaves: { start: string; end: string }[],
+  calendar?: StoreCalendar | null,
+  yearMonth?: string,
+): boolean {
+  const { sundays } = getOverQuotaDays(monthLeaves, calendar, yearMonth);
+  const weekdayLeaveDays = countWeekdayLeaves(monthLeaves, calendar, yearMonth);
+  return sundays === 0 && weekdayLeaveDays === 0;
+}
+
+/** ยอดสุทธิของทั้งเดือน — ค่าหัก + โบนัสไม่ลา
+ *  net > 0 = ได้เงินเพิ่ม · net < 0 = ถูกหัก · 0 = เท่าทุน */
+export interface MonthlySettlement {
+  deduction: LeaveDeduction;
+  /** 0 หรือ PERFECT_ATTENDANCE_BONUS */
+  bonus: number;
+  net: number;
+}
+
+export function getMonthlySettlement(
+  monthLeaves: { start: string; end: string }[],
+  calendar?: StoreCalendar | null,
+  yearMonth?: string,
+): MonthlySettlement {
+  const deduction = getLeaveDeduction(monthLeaves, calendar, yearMonth);
+  const bonus = hasPerfectAttendance(monthLeaves, calendar, yearMonth)
+    ? PERFECT_ATTENDANCE_BONUS
+    : 0;
+  return { deduction, bonus, net: bonus - deduction.total };
 }
 
 /** เดือน (YYYY-MM) ทั้งหมดที่ช่วงวันนี้คร่อม */
@@ -210,4 +256,36 @@ export function getAdditionalDeduction(
       total: acc.total + (after.total - before.total),
     };
   }, EMPTY_DEDUCTION);
+}
+
+/** ผลกระทบเป็นเงินของ "ใบลาใบใหม่" — ใช้โชว์ตอนกรอกฟอร์ม
+ *  รวมทั้งค่าหักที่เพิ่มขึ้น และโบนัสไม่ลาที่จะเสียไป (ถ้าเดือนนั้นยังสะอาดอยู่) */
+export interface RequestImpact {
+  /** ส่วนต่างค่าหักที่ใบนี้ทำให้เพิ่ม */
+  deduction: LeaveDeduction;
+  /** โบนัสที่จะหลุดเพราะใบนี้ (0 หรือ PERFECT_ATTENDANCE_BONUS ต่อเดือนที่คร่อม) */
+  bonusLost: number;
+  /** เงินที่หายไปทั้งหมดจากการยื่นใบนี้ */
+  total: number;
+}
+
+export function getRequestImpact(
+  existingLeaves: { start: string; end: string }[],
+  candidate: { start: string; end: string },
+  calendar?: StoreCalendar | null,
+): RequestImpact {
+  const deduction = getAdditionalDeduction(existingLeaves, candidate, calendar);
+  const bonusLost = monthsInRange(candidate.start, candidate.end).reduce(
+    (sum, ym) => {
+      const before = getMonthlySettlement(existingLeaves, calendar, ym).bonus;
+      const after = getMonthlySettlement(
+        [...existingLeaves, candidate],
+        calendar,
+        ym,
+      ).bonus;
+      return sum + (before - after);
+    },
+    0,
+  );
+  return { deduction, bonusLost, total: deduction.total + bonusLost };
 }

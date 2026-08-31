@@ -4,6 +4,7 @@ import {
   CalendarDays as IconCalendar,
   CalendarRange as IconCalendarRange,
   Cross as IconCross,
+  Gift as IconGift,
   Sun as IconSun,
   Wallet as IconWallet,
 } from "lucide-react";
@@ -12,7 +13,10 @@ import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
 import { formatBaht } from "../../utils/format";
-import { getLeaveDeduction } from "../../utils/leaveUtils";
+import {
+  getLeaveDeduction,
+  hasPerfectAttendance,
+} from "../../utils/leaveUtils";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
@@ -133,20 +137,30 @@ export default function LeaveSummaryPanel({
     : currentMonth;
   /* ยอดหักรวมทั้งร้านในเดือนที่กำลังดู — คิดแยกรายคนก่อนแล้วค่อยรวม
      เพราะโควต้าเป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน */
-  const monthDeductionTotal = useMemo(
-    () =>
-      employeeDirectory.reduce((sum, emp) => {
-        const empLeaves = allLeaves.filter(
-          (lv) =>
-            lv.employeeId === emp.id && lv.start.startsWith(effectiveMonth),
-        );
-        return (
-          sum +
-          getLeaveDeduction(empLeaves, storeCalendar, effectiveMonth).total
-        );
-      }, 0),
-    [allLeaves, employeeDirectory, storeCalendar, effectiveMonth],
-  );
+  const monthTotals = useMemo(() => {
+    let deducted = 0;
+    const bonusNames: string[] = [];
+    for (const emp of employeeDirectory) {
+      const empLeaves = allLeaves.filter(
+        (lv) => lv.employeeId === emp.id && lv.start.startsWith(effectiveMonth),
+      );
+      deducted += getLeaveDeduction(
+        empLeaves,
+        storeCalendar,
+        effectiveMonth,
+      ).total;
+      // คนที่ไม่มีวันลาที่นับเลย → ได้โบนัส · คนกลุ่มนี้ไม่โผล่ในลิสต์ด้านล่าง
+      // (ลิสต์โชว์เฉพาะคนที่มีใบลา) จึงต้องสรุปแยกให้ admin เห็น
+      if (hasPerfectAttendance(empLeaves, storeCalendar, effectiveMonth)) {
+        bonusNames.push(emp.nickname || emp.name);
+      }
+    }
+    return {
+      deducted,
+      bonusNames,
+      bonus: bonusNames.length * BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS,
+    };
+  }, [allLeaves, employeeDirectory, storeCalendar, effectiveMonth]);
 
   const years: string[] = (
     [...new Set(allLeaves.map((lv) => lv.start.slice(0, 4)))] as string[]
@@ -169,15 +183,31 @@ export default function LeaveSummaryPanel({
             onSelect={onSelectMonth}
           />
         </div>
-        {monthDeductionTotal > 0 && (
-          <div className="rounded-xl border-[1.5px] border-[#C0392B40] bg-[#FEF2F2] px-3.5 py-2.5 mb-3 flex items-center justify-between gap-3">
+        {monthTotals.deducted > 0 && (
+          <div className="rounded-xl border-[1.5px] border-[#C0392B40] bg-[#FEF2F2] px-3.5 py-2.5 mb-2 flex items-center justify-between gap-3">
             <span className="text-sm font-bold text-red inline-flex items-center gap-1.5">
               <IconWallet size={14} strokeWidth={2.4} />
               ยอดหักรวมทั้งเดือน
             </span>
             <span className="text-lg font-extrabold text-red">
-              {formatBaht(monthDeductionTotal)}
+              {formatBaht(monthTotals.deducted)}
             </span>
+          </div>
+        )}
+        {monthTotals.bonus > 0 && (
+          <div className="rounded-xl border-[1.5px] border-[#1A6B3A40] bg-green-lt px-3.5 py-2.5 mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-bold text-green inline-flex items-center gap-1.5">
+                <IconGift size={14} strokeWidth={2.4} />
+                โบนัสไม่ลา {monthTotals.bonusNames.length} คน
+              </span>
+              <span className="text-lg font-extrabold text-green">
+                +{formatBaht(monthTotals.bonus)}
+              </span>
+            </div>
+            <div className="text-xs text-txt-soft mt-1">
+              {monthTotals.bonusNames.join(" · ")}
+            </div>
           </div>
         )}
         {employeeDirectory.length === 0 && (
