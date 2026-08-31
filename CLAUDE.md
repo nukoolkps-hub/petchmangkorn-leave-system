@@ -110,6 +110,7 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `src/components/admin/PayrollPeriodBar.tsx` | แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ |
 | `src/components/admin/PeriodSettlementTable.tsx` | ตารางสรุปเงินทั้งรอบ (ทุกคน) + ปุ่มคัดลอก |
 | `src/utils/payrollPeriod.ts` | **Single source** ของขอบเขตรอบจ่าย (มี unit test) |
+| `src/utils/periodSettlement.ts` | **Single source** ของสรุปเงินทั้งรอบ + snapshot ล็อกยอด (มี unit test) |
 | `src/components/admin/StoreCalendarPanel.tsx` | วันเปิด-ปิดร้าน (cascade ลบใบลาในวันที่ปิด) |
 | `src/components/home/TeamCalendar.tsx` | ปฏิทินทีม — ใช้ทั้งหน้าแรกพนักงานและ admin |
 | `src/types/index.ts` | Domain types ทั้งหมด |
@@ -200,8 +201,9 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 รอบ ก.ย. = 28 ส.ค. ──────► 30 ก.ย.   (ยังไม่ปิด = ใช้สิ้นเดือนชั่วคราว)
 ```
 
-- doc เดียว `/config/payrollPeriods` → `{ cutoffs: { "2026-08": "2026-08-27" } }`
-  มีเฉพาะเดือนที่ปิดแล้ว
+- doc เดียว `/config/payrollPeriods` → `{ cutoffs, snapshots }` มีเฉพาะเดือนที่ปิดแล้ว
+  - `cutoffs: { "2026-08": "2026-08-27" }` — วันตัดรอบ
+  - `snapshots: { "2026-08": { start, end, closedAt, rows, totals } }` — **ยอดที่ล็อกไว้**
 - **วันลาหลังวันตัดยกไปรอบถัดไปอัตโนมัติ** — ไม่ต้องทำอะไรเพิ่ม
 - โควต้า/ค่าหัก/โบนัส ผูกกับ **รอบ** ไม่ใช่เดือนปฏิทิน
 - เปิดรอบกลับได้ถ้ากดผิดวัน (ปุ่ม "เปิดรอบกลับ")
@@ -216,8 +218,30 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 (เดือนปฏิทินเต็มเดือน) **หรือ** `LeavePeriod` (ช่วงวันของรอบ) — call site
 ที่ยังส่งเดือนอยู่จึงไม่พัง
 
-⚠️ ยอดคำนวณสดจากใบลาทุกครั้ง **ไม่ได้ snapshot** — ปิดรอบแล้วถ้าไปแก้
-ปฏิทินร้านย้อนหลัง ยอดรอบนั้นจะขยับตาม (ถ้าต้องล็อกยอดต้องทำ snapshot เพิ่ม)
+### ล็อกยอดตอนปิดรอบ (snapshot)
+
+รอบที่ **ยังไม่ปิด** คิดยอดสดจากใบลา + ปฏิทินร้านทุกครั้ง ·
+กด **"ปิดรอบ"** เมื่อไหร่ ระบบเก็บยอดของทุกคน ณ วินาทีนั้นเป็น snapshot →
+รอบที่ปิดแล้วโชว์ตัวเลขจาก snapshot **ไม่คิดใหม่** แก้ปฏิทินร้าน/ใบลา
+ย้อนหลังก็ไม่ทำให้ยอดที่จ่ายไปแล้วขยับ
+
+**Single source: `src/utils/periodSettlement.ts`** (pure · มี unit test)
+
+- `buildSettlement(employees, leaves, calendar, period)` → `{ rows, totals }`
+  ยอดของทุกคนในรอบ (คิดทีละคนแล้วรวม — โควต้า/โบนัสเป็นของแต่ละคน)
+- `makeSnapshot(yearMonth, period, settlement, closedAt?)` → `PeriodSnapshot`
+  · **ต้องส่ง period ที่ `end` = วันตัดที่เลือก** ไม่ใช่ขอบชั่วคราวสิ้นเดือน
+  ที่โชว์อยู่ตอนรอบยังเปิด
+- `diffSettlement(snapshot, live)` → คนที่ยอดสด "ตอนนี้" ไม่ตรงกับที่ล็อกไว้
+  (มีคนแก้ย้อนหลัง) → UI ขึ้นแถบแดงเตือน + ปุ่ม "ยึดยอดใหม่"
+
+Mutation ทั้งหมด (`closePayrollPeriod` / `reopenPayrollPeriod` /
+`relockPayrollPeriod` ใน `src/firebase/payrollPeriods.ts`) ทำผ่าน
+`runTransaction` แล้วเขียนทับทั้ง doc — เพราะ `setDoc(merge)` ลบ key ออกจาก
+map ไม่ได้ · เก็บย้อนหลังสูงสุด `MAX_SNAPSHOTS` (60) รอบ เกินนั้นตัดรอบเก่าสุดทิ้ง
+
+- **เปิดรอบกลับ** ลบ snapshot ทิ้งด้วย (ยอดที่ล็อกผูกกับวันตัดที่กำลังยกเลิก)
+- snapshot ที่หน้าตาไม่ครบถูก sanitize ทิ้งทั้งรอบ → ตกกลับไปคิดยอดสด
 
 ### ปฏิทินเปิด-ปิดร้าน (storeCalendar)
 

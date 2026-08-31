@@ -6,21 +6,25 @@ import {
   Cross as IconCross,
   Sun as IconSun,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BUSINESS_RULES, COLORS } from "../../constants";
 import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { fmtDateWithWeekday, todayYmd, toYMD } from "../../utils/dateUtils";
-import {
-  getLeaveDeduction,
-  hasPerfectAttendance,
-  leaveOverlapsMonth,
-} from "../../utils/leaveUtils";
+import { getLeaveDeduction, leaveOverlapsMonth } from "../../utils/leaveUtils";
 import {
   getPeriodRange,
   isCalendarMonth,
   isPeriodClosed,
+  type LeavePeriod,
   type PeriodCutoffs,
 } from "../../utils/payrollPeriod";
+import {
+  buildSettlement,
+  diffSettlement,
+  makeSnapshot,
+  type PeriodSnapshot,
+  type PeriodSnapshots,
+} from "../../utils/periodSettlement";
 import AvatarCircle from "../shared/AvatarCircle";
 import DeductionSummary from "../shared/DeductionSummary";
 import MonthChevronNav from "../shared/MonthChevronNav";
@@ -105,8 +109,18 @@ interface LeaveSummaryPanelProps {
   storeCalendar: StoreCalendar;
   /** วันตัดรอบของเดือนที่ปิดไปแล้ว — กำหนดว่าแต่ละรอบกินวันไหนถึงวันไหน */
   periodCutoffs: PeriodCutoffs;
-  onClosePeriod: (yearMonth: string, cutoffYmd: string) => Promise<void>;
+  /** ยอดที่ล็อกไว้ตอนปิดรอบ — รอบที่ปิดแล้วโชว์ชุดนี้แทนยอดสด */
+  periodSnapshots: PeriodSnapshots;
+  onClosePeriod: (
+    yearMonth: string,
+    cutoffYmd: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   onReopenPeriod: (yearMonth: string) => Promise<void>;
+  onRelockPeriod: (
+    yearMonth: string,
+    snapshot: PeriodSnapshot,
+  ) => Promise<void>;
   showToast: (msg: string) => void;
   /** เดือนที่ดู (YYYY-MM) — controlled โดย AdminPanel · share กับ section
    *  อื่น (LeaveListPanel) */
@@ -120,8 +134,10 @@ export default function LeaveSummaryPanel({
   employeeDirectory,
   storeCalendar,
   periodCutoffs,
+  periodSnapshots,
   onClosePeriod,
   onReopenPeriod,
+  onRelockPeriod,
   showToast,
   selectedMonth,
   onSelectMonth,
@@ -160,37 +176,61 @@ export default function LeaveSummaryPanel({
   const periodClosed = isPeriodClosed(effectiveMonth, periodCutoffs);
   const periodIsPlainMonth = isCalendarMonth(effectiveMonth, period);
 
-  /* สรุปรายคนของทั้งรอบ — คิดแยกทีละคนแล้วค่อยรวม เพราะโควต้า/โบนัส
-     เป็นของ "แต่ละคน" ไม่ใช่ของทั้งร้าน · เรียงคนถูกหักมากสุดขึ้นก่อน */
-  const rows = useMemo(() => {
-    return employeeDirectory
-      .map((emp) => {
-        const empLeaves = allLeaves.filter(
-          (lv) => lv.employeeId === emp.id && leaveOverlapsMonth(lv, period),
-        );
-        const deduction = getLeaveDeduction(empLeaves, storeCalendar, period);
-        const bonus = hasPerfectAttendance(empLeaves, storeCalendar, period)
-          ? BUSINESS_RULES.PERFECT_ATTENDANCE_BONUS
-          : 0;
-        return {
-          id: emp.id,
-          name: emp.nickname || emp.name,
-          deduction,
-          bonus,
-          net: bonus - deduction.total,
-        };
-      })
-      .sort((a, b) => a.net - b.net);
-  }, [allLeaves, employeeDirectory, storeCalendar, period]);
+  /* ยอด "สด" ของรอบที่กำลังดู — คิดจากใบลา + ปฏิทินร้าน ณ ตอนนี้ */
+  const live = useMemo(
+    () => buildSettlement(employeeDirectory, allLeaves, storeCalendar, period),
+    [allLeaves, employeeDirectory, storeCalendar, period],
+  );
 
-  const periodTotals = useMemo(
-    () => ({
-      deducted: rows.reduce((sum, r) => sum + r.deduction.total, 0),
-      bonus: rows.reduce((sum, r) => sum + r.bonus, 0),
-      net: rows.reduce((sum, r) => sum + r.net, 0),
-      bonusNames: rows.filter((r) => r.bonus > 0).map((r) => r.name),
-    }),
-    [rows],
+  /* ยอดที่ล็อกไว้ตอนปิดรอบ — ถ้ามี ให้ถือว่านี่คือยอดทางการของรอบนั้น
+     (ยอดสดยังคิดต่อไปเพื่อเอามาเทียบว่ามีอะไรขยับหลังปิดรอบไหม)        */
+  const snapshot = periodSnapshots[effectiveMonth];
+  // ช่วงวันที่โชว์คู่กับยอด ต้องเป็นช่วงที่ "ยอดชุดนั้น" คิดมา — ไม่งั้นถ้า
+  // ขอบรอบขยับทีหลัง หัวข้อความที่คัดลอกไปจะไม่ตรงกับตัวเลขข้างใต้
+  const shown = snapshot
+    ? {
+        rows: snapshot.rows,
+        totals: snapshot.totals,
+        range: { start: snapshot.start, end: snapshot.end },
+      }
+    : { ...live, range: period };
+  const drift = useMemo(
+    () => (snapshot ? diffSettlement(snapshot, live) : []),
+    [snapshot, live],
+  );
+
+  /* ปิดรอบ = ล็อกยอด ณ ตอนนั้นไปพร้อมกัน
+     ⚠️ ต้องคิดยอดด้วยขอบรอบ "หลังปิด" (end = วันตัดที่เลือก) ไม่ใช่ขอบ
+     ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด — ไม่งั้นวันลาหลังวันตัด
+     จะถูกล็อกติดมาในรอบที่จ่ายไปแล้ว                                     */
+  const settlementFor = useCallback(
+    (range: LeavePeriod) =>
+      buildSettlement(employeeDirectory, allLeaves, storeCalendar, range),
+    [employeeDirectory, allLeaves, storeCalendar],
+  );
+
+  const handleClosePeriod = useCallback(
+    async (yearMonth: string, cutoffYmd: string) => {
+      const closedRange = {
+        start: getPeriodRange(yearMonth, periodCutoffs).start,
+        end: cutoffYmd,
+      };
+      await onClosePeriod(
+        yearMonth,
+        cutoffYmd,
+        makeSnapshot(yearMonth, closedRange, settlementFor(closedRange)),
+      );
+    },
+    [onClosePeriod, periodCutoffs, settlementFor],
+  );
+
+  const handleRelockPeriod = useCallback(
+    () =>
+      onRelockPeriod(
+        effectiveMonth,
+        makeSnapshot(effectiveMonth, period, live),
+      ),
+    [onRelockPeriod, effectiveMonth, period, live],
   );
 
   const years: string[] = (
@@ -219,14 +259,19 @@ export default function LeaveSummaryPanel({
           period={period}
           closed={periodClosed}
           plainMonth={periodIsPlainMonth}
-          onClose={onClosePeriod}
+          lockedAt={snapshot?.closedAt}
+          onClose={handleClosePeriod}
           onReopen={onReopenPeriod}
           showToast={showToast}
         />
         <PeriodSettlementTable
-          rows={rows}
-          period={period}
-          totals={periodTotals}
+          rows={shown.rows}
+          period={shown.range}
+          totals={shown.totals}
+          locked={Boolean(snapshot)}
+          lockedAt={snapshot?.closedAt}
+          drift={drift}
+          onRelock={handleRelockPeriod}
           showToast={showToast}
         />
         {employeeDirectory.length === 0 && (

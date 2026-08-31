@@ -1,6 +1,8 @@
 /* ─── PayrollPeriodBar — แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ ─────────────────
    ร้านคิดเงินเดือนก่อนสิ้นเดือนได้ (วันตัดไม่คงที่ อยู่ช่วง 25-31)
    admin เลือกวันตัดแล้วกด "ปิดรอบ" → วันลาหลังจากนั้นยกไปรอบถัดไป
+   พร้อมกันนั้นระบบจะ "ล็อกยอด" ของรอบไว้ (snapshot) ไม่ให้ขยับตามการ
+   แก้ปฏิทินร้าน/ใบลาย้อนหลังอีก
 
    ขอบเขตรอบคำนวณโดย utils/payrollPeriod เท่านั้น component นี้แค่ render */
 
@@ -10,7 +12,7 @@ import {
   RotateCcw as IconReopen,
 } from "lucide-react";
 import { useState } from "react";
-import { fmtShort } from "../../utils/dateUtils";
+import { fmtShort, toYMD } from "../../utils/dateUtils";
 import { type LeavePeriod, lastDayOfMonth } from "../../utils/payrollPeriod";
 import Spinner from "../shared/Spinner";
 import ThaiDateInput from "../shared/ThaiDateInput";
@@ -21,6 +23,8 @@ interface Props {
   closed: boolean;
   /** true = รอบนี้ตรงกับเดือนปฏิทินเป๊ะ (ยังไม่เคยปิดรอบไหนเลย) */
   plainMonth: boolean;
+  /** epoch ms ตอนล็อกยอดรอบนี้ (undefined = ยังไม่ปิด หรือ snapshot หาย) */
+  lockedAt?: number;
   onClose: (yearMonth: string, cutoffYmd: string) => Promise<void>;
   onReopen: (yearMonth: string) => Promise<void>;
   showToast: (msg: string) => void;
@@ -31,6 +35,7 @@ export default function PayrollPeriodBar({
   period,
   closed,
   plainMonth,
+  lockedAt,
   onClose,
   onReopen,
   showToast,
@@ -50,7 +55,9 @@ export default function PayrollPeriodBar({
       await onClose(yearMonth, cutoff);
       setPicking(false);
       setCutoff("");
-      showToast(`ปิดรอบแล้ว — วันลาหลัง ${fmtShort(cutoff)} ยกไปรอบถัดไป`);
+      showToast(
+        `ปิดรอบแล้ว — ล็อกยอดไว้ · วันลาหลัง ${fmtShort(cutoff)} ยกไปรอบถัดไป`,
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "ปิดรอบไม่สำเร็จ");
     } finally {
@@ -62,7 +69,7 @@ export default function PayrollPeriodBar({
     setBusy(true);
     try {
       await onReopen(yearMonth);
-      showToast("เปิดรอบกลับแล้ว — รอบนี้กลับไปนับถึงสิ้นเดือน");
+      showToast("เปิดรอบกลับแล้ว — ยอดที่ล็อกไว้ถูกลบ กลับไปคิดสดถึงสิ้นเดือน");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "เปิดรอบไม่สำเร็จ");
     } finally {
@@ -99,6 +106,13 @@ export default function PayrollPeriodBar({
               </>
             )}
           </div>
+          {closed && (
+            <div className="text-[11px] text-txt-soft mt-0.5">
+              {lockedAt
+                ? `ล็อกยอดไว้เมื่อ ${fmtShort(toYMD(new Date(lockedAt)))} — แก้ปฏิทิน/ใบลาย้อนหลังไม่ทำให้ยอดรอบนี้ขยับ`
+                : "รอบนี้ปิดไว้แต่ไม่มียอดที่ล็อก — ตารางด้านล่างยังคิดสด"}
+            </div>
+          )}
         </div>
 
         {closed ? (
@@ -136,6 +150,14 @@ export default function PayrollPeriodBar({
         <div className="mt-2.5 pt-2.5 border-t border-dashed border-bdr">
           <div className="text-xs text-txt-mid mb-1.5">
             เลือกวันสุดท้ายที่นับเข้ารอบนี้ — วันลาหลังจากนั้นจะยกไปรอบถัดไป
+          </div>
+          <div className="text-[11px] text-txt-soft mb-1.5 inline-flex items-start gap-1">
+            <IconLock
+              size={11}
+              strokeWidth={2.4}
+              className="mt-[3px] shrink-0"
+            />
+            กดยืนยันแล้วยอดของรอบนี้จะถูกล็อกไว้ตามที่เห็นในตารางด้านล่าง
           </div>
           <ThaiDateInput
             value={cutoff}

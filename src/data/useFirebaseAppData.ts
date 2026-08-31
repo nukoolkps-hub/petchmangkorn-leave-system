@@ -27,6 +27,7 @@ import {
 } from "../firebase/leaves";
 import {
   closePayrollPeriod as closePayrollPeriodDoc,
+  relockPayrollPeriod as relockPayrollPeriodDoc,
   reopenPayrollPeriod as reopenPayrollPeriodDoc,
 } from "../firebase/payrollPeriods";
 import { updateStoreCalendar as updateStoreCalendarDoc } from "../firebase/storeCalendar";
@@ -193,7 +194,8 @@ export default function useFirebaseAppData({
     allLeaves,
     employeeDirectory,
     storeCalendar: storeCalendarResult.data,
-    periodCutoffs: payrollPeriodsResult.data,
+    periodCutoffs: payrollPeriodsResult.data.cutoffs,
+    periodSnapshots: payrollPeriodsResult.data.snapshots,
     loading: employeesResult.loading,
     leavesLoading: leavesResult.loading,
     error,
@@ -205,7 +207,7 @@ export default function useFirebaseAppData({
     reorderEmployees,
     updateStoreCalendar,
     closePayrollPeriod: closePayrollPeriodDoc,
-    reopenPayrollPeriod: (yearMonth: string) =>
-      reopenPayrollPeriodDoc(yearMonth, payrollPeriodsResult.data),
+    reopenPayrollPeriod: reopenPayrollPeriodDoc,
+    relockPayrollPeriod: relockPayrollPeriodDoc,
   };
 }
