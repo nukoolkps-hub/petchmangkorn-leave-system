@@ -69,13 +69,15 @@ export default function PeriodSettlementPanel({
 }: Props) {
   const today = todayYmd();
 
-  // รอบที่เลือกดูได้ = รอบที่มีใบลา ∪ รอบของวันนี้ ∪ รอบที่กำลังดู
-  // (ต้องแปลงใบลาเป็น key ของ "รอบ" — ดู periodKeysForLeaves)
+  // รอบที่เลือกดูได้ = รอบที่มีใบลา ∪ รอบที่เคยปิด ∪ รอบของวันนี้ ∪ รอบที่กำลังดู
+  // ต้องมี "รอบที่เคยปิด" ด้วย — ไม่งั้นรอบที่ปิดตอนไม่มีใครลาเลยจะหายจาก
+  // ลิสต์ กดเปิดรอบกลับไม่ได้
   const months = useMemo(
     () =>
       periodKeysForLeaves(allLeaves, periodCutoffs, [
         selectedMonth,
         periodKeyForDate(today, periodCutoffs),
+        ...Object.keys(periodCutoffs),
       ]),
     [allLeaves, periodCutoffs, selectedMonth, today],
   );

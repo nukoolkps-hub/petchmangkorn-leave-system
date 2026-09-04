@@ -293,11 +293,15 @@ export default function LeaveSummaryPanel({
               );
             })
             .filter(Boolean)}
-          {/* ต้องใช้ filter เดียวกับลิสต์ข้างบน — เดิมเช็คด้วย
-              startsWith(effectiveMonth) ทำให้ใบลาที่ยกไปรอบถัดไปโชว์การ์ด
-              พร้อมข้อความ "ไม่มีการลา" ใต้การ์ดตัวเอง */}
-          {allLeaves.filter((lv) => leaveOverlapsMonth(lv, period)).length ===
-            0 && (
+          {/* ต้องใช้เกณฑ์เดียวกับลิสต์ข้างบน ทั้งช่วงวันและการกรองพนักงาน —
+              ไม่งั้นใบลาของคนที่ถูกลบไปแล้วจะทำให้ section ว่างเปล่า
+              (ไม่มีทั้งการ์ดและข้อความ) */}
+          {!employeeDirectory.some((emp) =>
+            allLeaves.some(
+              (lv) =>
+                lv.employeeId === emp.id && leaveOverlapsMonth(lv, period),
+            ),
+          ) && (
             <div className="text-txt-soft text-sm text-center py-4">
               {periodIsPlainMonth ? "ไม่มีการลาในเดือนนี้" : "ไม่มีการลาในรอบนี้"}
             </div>
@@ -412,12 +416,13 @@ export default function LeaveSummaryPanel({
               );
             })
             .filter(Boolean)}
-          {employeeDirectory.every(
-            (emp) =>
-              allLeaves.filter(
-                (lv) =>
-                  lv.employeeId === emp.id && lv.start.startsWith(selYear),
-              ).length === 0,
+          {/* เกณฑ์เดียวกับลิสต์ข้างบน — overlap กับทั้งปี ไม่ใช่ startsWith
+              (ใบลาคร่อมปีใหม่จะขึ้นการ์ดพร้อมข้อความ "ไม่มีการลา" ใต้ตัวเอง) */}
+          {!employeeDirectory.some((emp) =>
+            allLeaves.some(
+              (lv) =>
+                lv.employeeId === emp.id && leaveOverlapsMonth(lv, yearPeriod),
+            ),
           ) && (
             <div className="text-txt-soft text-sm text-center py-4">
               ไม่มีการลาในปีนี้

@@ -24,6 +24,9 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+  /** true = กำลังแลก code ของ LINE Login อยู่ — ห้าม reload หน้าระหว่างนี้
+   *  (code/state ใช้ได้ครั้งเดียว · reload กลางคัน = ต้องล็อกอินใหม่) */
+  handlingLineCallback: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -31,6 +34,7 @@ const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
   error: null,
+  handlingLineCallback: false,
   signOut: async () => {},
 });
 
@@ -98,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         loading: loading || handlingCallback,
         error,
+        handlingLineCallback: handlingCallback,
         signOut: handleSignOut,
       }}
     >

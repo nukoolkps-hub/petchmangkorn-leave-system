@@ -24,7 +24,6 @@ import { addDaysYmd, fmtDate, isFuture, todayYmd } from "../../utils/dateUtils";
 import {
   getCountedLeaveDays,
   getRequestImpact,
-  hasPerfectAttendance,
   leaveOverlapsMonth,
 } from "../../utils/leaveUtils";
 import {
@@ -199,38 +198,49 @@ export default function RequestTab({
 
   /* ─── Quota status for this month — count weekday days (Mon-Fri)
        1 ใบลา 4 วันธรรมดา = 4 ไม่ใช่ 1 · sunday แยกคนละอัตรา ไม่ใช้โควต้า */
-  const monthLeavesForQuota = profile
-    ? allLeaves.filter(
-        (lv: LeaveEntry) =>
-          lv.employeeId === profile.id && leaveOverlapsMonth(lv, currentPeriod),
-      )
-    : [];
-  const { weekdays: usedWeekdays, sundays: usedSundays } = getCountedLeaveDays(
-    monthLeavesForQuota,
-    storeCalendar,
-    currentPeriod,
+  const monthLeavesForQuota = useMemo(
+    () =>
+      profile
+        ? allLeaves.filter(
+            (lv: LeaveEntry) =>
+              lv.employeeId === profile.id &&
+              leaveOverlapsMonth(lv, currentPeriod),
+          )
+        : [],
+    [allLeaves, profile, currentPeriod],
   );
-  const usedDays = usedWeekdays + usedSundays;
+
+  /* memo: ฟังก์ชันพวกนี้กางใบลาออกทีละวัน — ถ้าปล่อยไว้ใน render body
+     จะคำนวณใหม่ทุกครั้งที่พิมพ์ในฟอร์มและทุกครั้งที่ Firestore ส่ง snapshot
+     ทั้งที่ input ไม่ได้เปลี่ยน                                          */
+  const { usedDays, freeLeft, bonusStillAvailable } = useMemo(() => {
+    const { weekdays, sundays } = getCountedLeaveDays(
+      monthLeavesForQuota,
+      storeCalendar,
+      currentPeriod,
+    );
+    return {
+      usedDays: weekdays + sundays,
+      freeLeft: Math.max(0, BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA - weekdays),
+      // รอบนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่ครบทั้ง 2 ก้อน · ต้องเตือน
+      // ให้ชัด เพราะวันลาวันแรกแพงกว่าที่คิด (เสียทั้งค่าหักและโบนัสพร้อมกัน)
+      bonusStillAvailable: weekdays === 0 && sundays === 0,
+    };
+  }, [monthLeavesForQuota, storeCalendar, currentPeriod]);
   const quota = BUSINESS_RULES.WEEKDAY_LEAVE_QUOTA;
-  const freeLeft = Math.max(0, quota - usedWeekdays);
 
   /* ─── ยอดที่ "ใบลาใบนี้" จะโดนหักเพิ่ม ─────────────────────────
      คิดเป็นส่วนต่างจากใบลาที่มีอยู่แล้ว — ใบใหม่อาจทับวันกับใบเดิม
-     ซึ่งไม่ควรถูกหักซ้ำ                                              */
-  const pendingImpact = getRequestImpact(
-    myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
-    { start: form.startDate, end: form.endDate },
-    storeCalendar,
-    periodCutoffs,
-  );
-
-  /* รอบนี้ยังไม่มีวันลาที่นับเลย → โบนัสยังอยู่ครบทั้ง 2 ก้อน
-     ต้องเตือนให้ชัด เพราะวันลาวันแรกแพงกว่าที่คิด — เสียทั้งค่าหัก
-     และโบนัสทั้งก้อนพร้อมกัน */
-  const bonusStillAvailable = hasPerfectAttendance(
-    monthLeavesForQuota,
-    storeCalendar,
-    currentPeriod,
+     ซึ่งไม่ควรถูกหักซ้ำ · memo ตามช่วงวันที่เลือก ไม่ใช่ทุก keystroke */
+  const pendingImpact = useMemo(
+    () =>
+      getRequestImpact(
+        myLeaves.map((lv) => ({ start: lv.start, end: lv.end })),
+        { start: form.startDate, end: form.endDate },
+        storeCalendar,
+        periodCutoffs,
+      ),
+    [myLeaves, form.startDate, form.endDate, storeCalendar, periodCutoffs],
   );
 
   return (

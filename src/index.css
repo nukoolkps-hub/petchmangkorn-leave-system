@@ -167,8 +167,12 @@ body {
 
 /* ปุ่ม/ลิงก์/ตัวควบคุม — แตะติดมือทันที (ตัด ~300ms delay + double-tap zoom)
    + transition พื้นฐานให้การเปลี่ยนสถานะ (สี/เงา/ย่อขยายตอนกด) นุ่มขึ้น ·
-   component ที่ตั้ง transition-*/ touch-none เองมี specificity สูงกว่า → override *
-/
+   component ที่ตั้ง transition utility / touch-none เองมี specificity สูงกว่า
+   → override กฎนี้ได้
+
+   ⚠️ ห้ามเขียน "transition-<ดาว>" ในคอมเมนต์ CSS — ดาว+ทับปิดคอมเมนต์กลางคัน
+   ทำให้ selector ข้างล่างกลายเป็น parse error แล้วถูกตัดออกจาก CSS ที่ build
+   (เคยเกิดมาแล้ว: ปุ่มบนมือถือมี delay ~300ms กลับมาทั้งระบบ) */
 button,
 a,
 [role="button"],
