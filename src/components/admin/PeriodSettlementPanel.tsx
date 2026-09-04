@@ -175,7 +175,10 @@ export default function PeriodSettlementPanel({
         />
       </div>
 
+      {/* key = รอบ → สลับรอบแล้ว state ในแถบ (ตัวเลือกวันตัด, ยืนยันเปิดรอบ
+          กลับ) รีเซ็ตให้เอง ไม่ค้างข้ามรอบ */}
       <PayrollPeriodBar
+        key={effectiveMonth}
         yearMonth={effectiveMonth}
         period={period}
         closed={isPeriodClosed(effectiveMonth, periodCutoffs)}

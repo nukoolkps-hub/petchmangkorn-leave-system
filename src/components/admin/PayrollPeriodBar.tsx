@@ -46,6 +46,8 @@ export default function PayrollPeriodBar({
   const [picking, setPicking] = useState(false);
   const [cutoff, setCutoff] = useState("");
   const [busy, setBusy] = useState(false);
+  // เปิดรอบกลับ = ทิ้งยอดที่ล็อกไว้ (ยอดที่จ่ายไปแล้ว) — ถ้าล็อกแล้วต้องถามก่อน
+  const [confirmReopen, setConfirmReopen] = useState(false);
 
   async function handleClose() {
     if (!cutoff) return;
@@ -69,6 +71,7 @@ export default function PayrollPeriodBar({
   }
 
   async function handleReopen() {
+    setConfirmReopen(false);
     setBusy(true);
     try {
       await onReopen(yearMonth);
@@ -101,8 +104,12 @@ export default function PayrollPeriodBar({
             {closed ? "ปิดรอบแล้ว" : "รอบยังเปิดอยู่"}
           </div>
           <div className="text-xs text-txt-soft mt-0.5">
-            {plainMonth ? (
-              "นับทั้งเดือน (ยังไม่เคยปิดรอบ)"
+            {/* plainMonth = "ช่วงรอบตรงกับเดือนปฏิทิน" เท่านั้น ไม่ได้แปลว่า
+                ยังไม่ปิด — ปิดรอบด้วยวันตัด = สิ้นเดือน (ค่าตั้งต้นของตัวเลือก)
+                ก็ยัง plainMonth · เดิมเขียน "ยังไม่เคยปิดรอบ" จึงขัดกับหัวข้อ
+                "ปิดรอบแล้ว" ที่อยู่บรรทัดบน */}
+            {plainMonth && !closed ? (
+              "นับทั้งเดือน (ยังไม่ปิดรอบ)"
             ) : (
               <>
                 {fmtShort(period.start)} – {fmtShort(period.end)}
@@ -115,7 +122,7 @@ export default function PayrollPeriodBar({
                 ? `ล็อกยอดไว้เมื่อ ${fmtShort(toYMD(new Date(lockedAt)))} — แก้ปฏิทิน/ใบลาย้อนหลังไม่ทำให้ยอดรอบนี้ขยับ`
                 : lockPendingFrom
                   ? `ยอดจะล็อกหลังเที่ยงคืน (${fmtShort(lockPendingFrom)}) — วันนี้ยังแก้ใบลา/ปฏิทินร้านได้`
-                  : "รอบนี้ปิดไว้แต่ไม่มียอดที่ล็อก — ตารางด้านล่างยังคิดสด"}
+                  : "รอบนี้ปิดไว้ตั้งแต่ก่อนมีระบบล็อกยอด — ระบบจะล็อกให้เองเมื่อ admin เปิดแอป"}
             </div>
           )}
         </div>
@@ -123,16 +130,28 @@ export default function PayrollPeriodBar({
         {closed ? (
           <button
             type="button"
-            onClick={handleReopen}
+            onClick={() => {
+              // ล็อกแล้ว → ถามยืนยันก่อน · ยังไม่ล็อก → กดได้เลย (ยังไม่มี
+              // ยอดอะไรให้เสีย)
+              if (lockedAt && !confirmReopen) {
+                setConfirmReopen(true);
+                return;
+              }
+              handleReopen();
+            }}
             disabled={busy}
-            className="px-3 py-1.5 rounded-[10px] border-[1.5px] border-bdr bg-white text-txt-mid text-xs font-semibold cursor-pointer font-[inherit] inline-flex items-center gap-1.5 disabled:opacity-50"
+            className={`px-3 py-1.5 rounded-[10px] border-[1.5px] text-xs font-semibold cursor-pointer font-[inherit] inline-flex items-center gap-1.5 disabled:opacity-50 ${
+              confirmReopen
+                ? "border-[#C0392B70] bg-[#FEF2F2] text-red"
+                : "border-bdr bg-white text-txt-mid"
+            }`}
           >
             {busy ? (
               <Spinner size={12} />
             ) : (
               <IconReopen size={13} strokeWidth={2.4} />
             )}
-            เปิดรอบกลับ
+            {confirmReopen ? "ยืนยัน — ทิ้งยอดที่ล็อก" : "เปิดรอบกลับ"}
           </button>
         ) : (
           !picking && (
@@ -150,6 +169,22 @@ export default function PayrollPeriodBar({
           )
         )}
       </div>
+
+      {confirmReopen && closed && (
+        <div className="mt-2.5 pt-2.5 border-t border-dashed border-bdr flex items-start justify-between gap-3">
+          <div className="text-[11px] text-red leading-relaxed flex-1">
+            ยอดที่ล็อกไว้ของรอบนี้จะถูกลบ แล้วกลับไปคิดสดตามใบลาปัจจุบัน —
+            ถ้าจ่ายเงินตามยอดนี้ไปแล้ว จะไม่เหลือหลักฐานว่าจ่ายเท่าไหร่
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmReopen(false)}
+            className="shrink-0 px-2.5 py-1 rounded-[8px] border-[1.5px] border-bdr bg-white text-txt-mid text-xs font-semibold cursor-pointer font-[inherit]"
+          >
+            ยกเลิก
+          </button>
+        </div>
+      )}
 
       {picking && !closed && (
         <div className="mt-2.5 pt-2.5 border-t border-dashed border-bdr">

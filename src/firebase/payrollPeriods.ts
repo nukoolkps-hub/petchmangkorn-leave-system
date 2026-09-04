@@ -13,6 +13,7 @@
    ได้อยู่ ยอดจึงคิดสดต่อไปจนพ้นวันนั้น (เที่ยงคืน) แล้วค่อยล็อก
    · กดปิดรอบ → เขียน snapshot ฉบับร่าง `pending: true`
    · พ้นเที่ยงคืน → finalizePayrollPeriod() เขียนทับด้วยยอดจริง pending: false
+   · รอบที่ปิดไว้ก่อนมีระบบนี้ (มีแต่วันตัด ไม่มี snapshot) → ตัวเดียวกันไล่เก็บให้
    หลังล็อกแล้ว จะไปแก้ปฏิทินร้าน/ใบลาย้อนหลังยังไง ยอดรอบนั้นก็ไม่ขยับ  */
 
 import { doc, onSnapshot, runTransaction } from "firebase/firestore";
@@ -213,16 +214,23 @@ export async function reopenPayrollPeriod(yearMonth: string): Promise<void> {
   });
 }
 
-/** ล็อกยอดจริงหลังพ้นวันที่กดปิดรอบ — เขียนทับฉบับร่างครั้งเดียว
+/** ล็อกยอดจริงเมื่อถึงเวลา — เขียนครั้งเดียว
  *
- *  ไม่ทำอะไรถ้ารอบนี้ไม่ได้อยู่ในสถานะฉบับร่างแล้ว (ล็อกไปแล้ว หรือถูก
- *  เปิดรอบกลับ) — กันหลาย ๆ เครื่องที่เปิดแอปพร้อมกันเขียนทับกันเอง      */
+ *  เขียนได้ 2 กรณี:
+ *  1. รอบมีฉบับร่างค้างอยู่ (`pending`) — เคสปกติหลังกดปิดรอบ
+ *  2. รอบปิดแล้วแต่ยัง **ไม่มี snapshot เลย** — รอบที่ปิดไว้ตั้งแต่ก่อนมี
+ *     ระบบล็อกยอด ถ้าไม่เก็บให้จะคิดยอดสดตลอดไป ไม่มีวันล็อก
+ *
+ *  นอกจาก 2 กรณีนี้ไม่ทำอะไร — ล็อกไปแล้วห้ามเขียนทับ (ต้องกด "ยึดยอดใหม่")
+ *  และรอบที่ถูกเปิดกลับไปแล้ว (ไม่มีวันตัด) ต้องไม่ถูกชุบชีวิตขึ้นมาใหม่   */
 export async function finalizePayrollPeriod(
   yearMonth: string,
   snapshot: PeriodSnapshot,
 ): Promise<void> {
   await mutatePeriods((cur) => {
-    if (!cur.snapshots[yearMonth]?.pending) return cur;
+    if (!cur.cutoffs[yearMonth]) return cur;
+    const existing = cur.snapshots[yearMonth];
+    if (existing && !existing.pending) return cur;
     return {
       cutoffs: cur.cutoffs,
       snapshots: {
