@@ -30,7 +30,12 @@ interface Args {
     yearMonth: string,
     snapshot: PeriodSnapshot,
   ) => Promise<void>;
-  /** false = ไม่ใช่ admin → ไม่มีสิทธิ์เขียน อย่าเรียก */
+  /** false = ยังไม่พร้อมล็อก — ต้องรอให้ใบลาโหลดครบก่อน
+   *
+   *  ⚠️ นี่คือกันพลาดที่สำคัญที่สุดของ hook นี้ · ถ้าล็อกตอน allLeaves ยังว่าง
+   *  จะได้ยอด "ทุกคนไม่ถูกหัก + ได้โบนัสเต็ม" แล้ว pending พลิกเป็น false
+   *  ถาวร (finalizePayrollPeriod เช็ค pending ใน transaction → เขียนทับไม่ได้)
+   *  ต้องให้ admin กด "ยึดยอดใหม่" เองถึงจะแก้ได้                          */
   enabled?: boolean;
 }
 
@@ -48,6 +53,9 @@ export default function usePeriodLock({
 
   useEffect(() => {
     if (!enabled) return;
+    // ไม่มีพนักงานสักคน = ข้อมูลยังมาไม่ครบ (หรือร้านยังไม่ได้ตั้งค่า)
+    // ล็อกตอนนี้ได้ snapshot ว่างเปล่าที่แก้ไม่ได้
+    if (employeeDirectory.length === 0) return;
     for (const snap of Object.values(periodSnapshots)) {
       if (!shouldFinalizeSnapshot(snap, today)) continue;
       if (finalizingRef.current.has(snap.yearMonth)) continue;

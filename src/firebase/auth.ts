@@ -83,12 +83,17 @@ export async function completeLineLogin() {
   if (state !== savedState) {
     throw new Error("State mismatch — อาจมีคนปลอมแปลง");
   }
-  sessionStorage.removeItem("line_login_state");
 
   // ส่ง code + state → Cloud Function · server consume state ใน Firestore txn
   const redirectUri = window.location.origin + window.location.pathname;
   const result = await lineAuthFn({ code, redirectUri, state });
   const { customToken } = result.data as { customToken: string };
+
+  // ล้าง state หลังแลกสำเร็จเท่านั้น
+  // ถ้าล้างก่อน await แล้วหน้าถูก reload ระหว่างรอ (lineAuth cold start ใน
+  // asia-southeast1 กิน 10 วินาทีได้สบาย) รอบถัดไปจะอ่าน savedState ไม่เจอ
+  // แล้วเด้ง "State mismatch" ทั้งที่ไม่มีใครปลอมแปลง — user ต้องล็อกอินใหม่
+  sessionStorage.removeItem("line_login_state");
 
   // Sign in ด้วย custom token
   return signInWithLineToken(customToken);

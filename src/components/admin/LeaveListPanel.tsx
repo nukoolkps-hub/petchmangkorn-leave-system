@@ -16,6 +16,13 @@ import {
   fmtDateWithWeekday,
   isFuture,
 } from "../../utils/dateUtils";
+import { leaveOverlapsMonth } from "../../utils/leaveUtils";
+import {
+  getPeriodRange,
+  type PeriodCutoffs,
+  periodKeyForDate,
+  periodKeysForLeaves,
+} from "../../utils/payrollPeriod";
 import ConfirmModal from "../modals/ConfirmModal";
 import AvatarCircle from "../shared/AvatarCircle";
 import CalendarPicker from "../shared/CalendarPicker";
@@ -27,6 +34,8 @@ interface LeaveListPanelProps {
   allLeaves: LeaveEntry[];
   /** leaves sub ยังโหลดอยู่ไหม → แสดง skeleton แทน "ไม่มีรายการ" ตอนยังว่าง */
   leavesLoading?: boolean;
+  /** วันตัดรอบ — ต้องใช้แปลง selectedMonth (key ของรอบ) เป็นช่วงวันจริง */
+  periodCutoffs: PeriodCutoffs;
   employeeDirectory: Employee[];
   storeCalendar?: import("../../types").StoreCalendar | null;
   onDelete: (id: string | number) => void;
@@ -44,6 +53,7 @@ interface LeaveListPanelProps {
 export default function LeaveListPanel({
   allLeaves,
   leavesLoading,
+  periodCutoffs,
   employeeDirectory,
   storeCalendar,
   onDelete,
@@ -54,20 +64,21 @@ export default function LeaveListPanel({
 }: LeaveListPanelProps) {
   const [confirmLeave, setConfirmLeave] = useState<any>(null);
 
-  // navMonths = เดือนที่กำลังดู ∪ เดือนที่มีใบลา · เรียงใหม่→เก่า
-  // โชว์เฉพาะเดือนที่มีข้อมูล (ไม่ยัดเดือนปัจจุบันที่ว่าง) · selectedMonth คงไว้
-  // เสมอเพื่อให้ effectiveMonth = selectedMonth ตรงๆ + ลูกศรไม่หลุด list
+  // navMonths = รอบที่กำลังดู ∪ รอบของวันนี้ ∪ รอบที่มีใบลา · เรียงใหม่→เก่า
+  // ต้องเป็น key ของ "รอบ" ให้ตรงกับ section อื่นที่ share adminMonth กัน
   const navMonths = useMemo(
     () =>
-      Array.from(
-        new Set([
-          selectedMonth,
-          ...allLeaves.map((lv) => lv.start.slice(0, 7)),
-        ]),
-      ).sort((a, b) => b.localeCompare(a)),
-    [allLeaves, selectedMonth],
+      periodKeysForLeaves(allLeaves, periodCutoffs, [
+        selectedMonth,
+        periodKeyForDate(TODAY, periodCutoffs),
+      ]),
+    [allLeaves, periodCutoffs, selectedMonth],
   );
   const effectiveMonth = selectedMonth;
+  const period = useMemo(
+    () => getPeriodRange(effectiveMonth, periodCutoffs),
+    [effectiveMonth, periodCutoffs],
+  );
 
   /* ─── Add-leave form (collapsible) ─── */
   const [addOpen, setAddOpen] = useState(false);
@@ -130,20 +141,16 @@ export default function LeaveListPanel({
   }
 
   // รายการลาทั้งหมด (รวมอนาคต) — admin ต้องเห็นทุกใบไม่ใช่แค่ที่ผ่านมาแล้ว
-  // filter ด้วย employeeId (ไม่ใช่ชื่อ) — กันชื่อซ้ำ/เปลี่ยนชื่อ
-  // overlap check แทน startsWith — ใบลาคร่อมเดือน (พ.ค. 30 → มิ.ย. 2)
-  // ต้องเห็นทั้งสองเดือน · admin จะได้ลบ/แก้ได้ทั้งสองมุมมอง
+  // overlap check กับ "ขอบรอบ" ไม่ใช่เดือนปฏิทิน — adminMonth เป็น key ของรอบ
+  // ถ้าเทียบกับเดือน ใบลาที่ยกไปรอบถัดไป (ลาวันที่ 29 หลังปิดรอบวันที่ 27)
+  // จะโผล่ใน "สรุปลา" แต่หายจากหน้านี้ → admin ลบไม่ได้
   // memo: กัน re-filter ตอนพิมพ์ในฟอร์มเพิ่มลา (filter inputs ไม่เปลี่ยน)
   const filteredLeaves = useMemo(
     () =>
       allLeaves
-        .filter(
-          (lv) =>
-            lv.start.slice(0, 7) <= effectiveMonth &&
-            lv.end.slice(0, 7) >= effectiveMonth,
-        )
+        .filter((lv) => leaveOverlapsMonth(lv, period))
         .sort((a, b) => b.start.localeCompare(a.start)),
-    [allLeaves, effectiveMonth],
+    [allLeaves, period],
   );
 
   return (

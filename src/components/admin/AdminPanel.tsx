@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { COLORS } from "../../constants";
 import usePeriodLock from "../../hooks/usePeriodLock";
 import { todayYmd } from "../../utils/dateUtils";
@@ -39,18 +39,21 @@ export default function AdminPanel({
   // controlled by App so the desktop Sidebar can drive section as well
   section,
   onSectionChange,
-  unsavedDirty,
-  onUnsavedDirtyChange,
 }) {
   /* ล็อกยอดรอบที่ถึงเวลาแล้ว — วางไว้ที่ AdminPanel ไม่ใช่ใน section
      "สรุปรอบจ่าย" เพราะต้องทำงานทุกครั้งที่ admin เปิดแอป ไม่ใช่เฉพาะตอน
-     บังเอิญเปิด section นั้น */
+     บังเอิญเปิด section นั้น
+
+     ⚠️ enabled ต้องรอ `leaves` มาก่อน — /config/payrollPeriods เป็น doc เดียว
+     มักมาถึงก่อน query ใบลา ถ้าล็อกตอนนั้นจะได้ยอดจาก allLeaves = [] คือ
+     ทุกคนไม่ถูกหักและได้โบนัสเต็ม แล้ว pending พลิกเป็น false ถาวร แก้ไม่ได้ */
   usePeriodLock({
     employeeDirectory,
     allLeaves,
     storeCalendar,
     periodSnapshots,
     onFinalizePeriod,
+    enabled: !leavesLoading,
   });
 
   function tryChangeSection(newId: AdminSectionId) {
@@ -60,7 +63,6 @@ export default function AdminPanel({
   function tryChangeGroup(group: AdminNavGroup) {
     tryChangeSection(group.defaultSection);
   }
-  const _setUnsavedDirty = onUnsavedDirtyChange;
 
   // draft แก้ไขพนักงาน + modal ที่เปิดอยู่ — ถือไว้ที่ AdminPanel (parent ร่วม)
   // เพื่อให้รอดเมื่อสลับ section แล้วกลับมา (EmployeeAdminPanel ถูก unmount)
@@ -74,18 +76,6 @@ export default function AdminPanel({
   // "เพิ่ม-ลบการลา" · เลือก ส.ค. ในแท็บหนึ่ง อีกแท็บตามด้วย
   // default = เดือนปัจจุบัน (todayYmd() กัน stale ข้าม midnight)
   const [adminMonth, setAdminMonth] = useState(() => todayYmd().slice(0, 7));
-
-  // เตือนตอนปิดหน้า/refresh ถ้ามี unsaved
-  useEffect(() => {
-    if (!unsavedDirty) return;
-    function handler(e) {
-      e.preventDefault();
-      e.returnValue = "";
-      return "";
-    }
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [unsavedDirty]);
 
   const activeGroup = getAdminGroupForSection(section);
   const ActiveGroupIcon = activeGroup.Icon;
@@ -222,6 +212,7 @@ export default function AdminPanel({
           <LeaveListPanel
             allLeaves={allLeaves}
             leavesLoading={leavesLoading}
+            periodCutoffs={periodCutoffs}
             employeeDirectory={employeeDirectory}
             storeCalendar={storeCalendar}
             onDelete={onDelete}

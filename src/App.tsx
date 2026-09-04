@@ -6,9 +6,8 @@ import {
   AlertTriangle as IconAlertTriangle,
   Check as IconCheck,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import AdminPanel from "./components/admin/AdminPanel";
 import HomeTab from "./components/home/HomeTab";
 import RequestTab from "./components/home/RequestTab";
 import SuccessScreen from "./components/home/SuccessScreen";
@@ -18,16 +17,32 @@ import DesktopHeader from "./components/layout/DesktopHeader";
 import MobileHeader from "./components/layout/MobileHeader";
 import { getNavItems } from "./components/layout/navConfig";
 import Sidebar from "./components/layout/Sidebar";
-import ManualModal from "./components/modals/ManualModal";
 import ProfileSetupModal from "./components/modals/ProfileSetupModal";
-import BaseModal from "./components/shared/BaseModal";
-import BootLoadingScreen from "./components/shared/BootLoadingScreen";
+import BootLoadingScreen, {
+  clearBootReloadGuard,
+} from "./components/shared/BootLoadingScreen";
 import Diamond from "./components/shared/Diamond";
 import { COLORS } from "./constants";
 import { useAuth } from "./contexts/AuthContext";
 import useAppData from "./data/useAppData";
 import useLeaveForm from "./hooks/useLeaveForm";
 import useProfile from "./hooks/useProfile";
+
+/* ─── Lazy chunks ─────────────────────────────────────────────────
+   AdminPanel ลาก section ทั้ง 8 + ตารางสรุปเงินมาด้วย · ManualModal เป็น
+   หน้าข้อความยาว · ทั้งคู่ "ไม่ได้ใช้ตอนเปิดแอป" — พนักงานทุกคนเคยต้อง
+   โหลดทั้งก้อนก่อนหน้าแรกจะขึ้น ซึ่งคือเวลาที่เสียไปบนหน้า loading พอดี */
+const AdminPanel = lazy(() => import("./components/admin/AdminPanel"));
+const ManualModal = lazy(() => import("./components/modals/ManualModal"));
+
+/** fallback ระหว่างโหลด chunk — เตี้ย ๆ ไม่กระโดดทั้งหน้า */
+function ChunkFallback() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="w-8 h-8 rounded-full border-[3px] border-bdr border-t-gold animate-spin" />
+    </div>
+  );
+}
 
 function UnlinkedEmployeeScreen({ onSignOut }: { onSignOut: () => void }) {
   return (
@@ -162,17 +177,8 @@ export default function LeaveApp() {
   /* ─── Admin section state (lifted up so the Sidebar can drive it) */
   const [adminSection, setAdminSection] =
     useState<AdminSectionId>("calendar-view");
-  const [adminUnsavedDirty, setAdminUnsavedDirty] = useState(false);
-  // กล่องเตือนในแอป (แทน window.confirm ที่เพี้ยนใน mobile webview)
-  const [pendingSection, setPendingSection] = useState<AdminSectionId | null>(
-    null,
-  );
   function tryChangeAdminSection(next: AdminSectionId) {
     if (next === adminSection) return;
-    if (adminUnsavedDirty) {
-      setPendingSection(next);
-      return;
-    }
     setAdminSection(next);
   }
 
@@ -199,6 +205,14 @@ export default function LeaveApp() {
 
   /* ─── Nav items ────────────────────────────────────────────── */
   const navItems = getNavItems({ isAdmin });
+
+  /* บูตสำเร็จแล้ว → ล้าง flag auto-reload ให้ครั้งหน้ากู้ตัวเองได้อีก
+     (ล้างที่นี่ไม่ใช่ใน cleanup ของ BootLoadingScreen เพราะ boot ปกติมีหน้า
+     loading 2 จอต่อกัน จอแรก unmount จะไปล้าง flag ให้จอสอง reload ได้อีก) */
+  const booted = !loading && adminChecked && !error;
+  useEffect(() => {
+    if (booted) clearBootReloadGuard();
+  }, [booted]);
 
   /* ─── Loading & Error states ───────────────────────────────── */
   if (loading || !adminChecked) {
@@ -335,29 +349,29 @@ export default function LeaveApp() {
                 path="/admin"
                 element={
                   isAdmin ? (
-                    <AdminPanel
-                      section={adminSection}
-                      onSectionChange={tryChangeAdminSection}
-                      unsavedDirty={adminUnsavedDirty}
-                      onUnsavedDirtyChange={setAdminUnsavedDirty}
-                      allLeaves={allLeaves}
-                      leavesLoading={leavesLoading}
-                      employeeDirectory={employeeDirectory}
-                      onDelete={leaveForm.handleDelete}
-                      onAddLeave={addLeaveAction}
-                      onUpdateRole={handleUpdateRole}
-                      onDeleteEmployee={handleDeleteEmployee}
-                      onReorderEmployees={reorderEmployees}
-                      storeCalendar={storeCalendar}
-                      periodCutoffs={periodCutoffs}
-                      periodSnapshots={periodSnapshots}
-                      onClosePeriod={closePayrollPeriod}
-                      onReopenPeriod={reopenPayrollPeriod}
-                      onRelockPeriod={relockPayrollPeriod}
-                      onFinalizePeriod={finalizePayrollPeriod}
-                      onUpdateStoreCalendar={updateStoreCalendarAction}
-                      showToast={showToast}
-                    />
+                    <Suspense fallback={<ChunkFallback />}>
+                      <AdminPanel
+                        section={adminSection}
+                        onSectionChange={tryChangeAdminSection}
+                        allLeaves={allLeaves}
+                        leavesLoading={leavesLoading}
+                        employeeDirectory={employeeDirectory}
+                        onDelete={leaveForm.handleDelete}
+                        onAddLeave={addLeaveAction}
+                        onUpdateRole={handleUpdateRole}
+                        onDeleteEmployee={handleDeleteEmployee}
+                        onReorderEmployees={reorderEmployees}
+                        storeCalendar={storeCalendar}
+                        periodCutoffs={periodCutoffs}
+                        periodSnapshots={periodSnapshots}
+                        onClosePeriod={closePayrollPeriod}
+                        onReopenPeriod={reopenPayrollPeriod}
+                        onRelockPeriod={relockPayrollPeriod}
+                        onFinalizePeriod={finalizePayrollPeriod}
+                        onUpdateStoreCalendar={updateStoreCalendarAction}
+                        showToast={showToast}
+                      />
+                    </Suspense>
                   ) : (
                     <Navigate to="/home" replace />
                   )
@@ -387,51 +401,10 @@ export default function LeaveApp() {
           />
         )}
 
-        {showManual && <ManualModal onClose={() => setShowManual(false)} />}
-
-        {pendingSection && (
-          <BaseModal
-            onClose={() => setPendingSection(null)}
-            zIndexClass="z-1000"
-            maxWidthClass="max-w-[360px]"
-            overlayClassName="px-6 bg-[rgba(45,26,14,0.55)] backdrop-blur-xs"
-            contentClassName="rounded-[20px] px-6 py-7"
-          >
-            <div className="w-14 h-14 rounded-full bg-amber-lt flex items-center justify-center mx-auto mb-4">
-              <IconAlertTriangle
-                size={26}
-                className="text-amber"
-                strokeWidth={2.5}
-              />
-            </div>
-            <div className="font-bold text-lg text-txt text-center mb-2">
-              ยังไม่ได้บันทึกการเปลี่ยนแปลง
-            </div>
-            <div className="text-sm text-txt-mid text-center mb-5 leading-[1.8]">
-              หากออกจากหน้านี้ ข้อมูลที่แก้ไขจะหายไป
-              <br />
-              ต้องการออกจากหน้านี้ใช่ไหม?
-            </div>
-            <div className="flex gap-2.5">
-              <button
-                onClick={() => setPendingSection(null)}
-                className="flex-1 p-3.5 rounded-xl border-[1.5px] border-bdr bg-white text-txt-mid text-base font-semibold cursor-pointer font-[inherit]"
-              >
-                อยู่ต่อ
-              </button>
-              <button
-                onClick={() => {
-                  const next = pendingSection;
-                  setPendingSection(null);
-                  setAdminUnsavedDirty(false);
-                  setAdminSection(next);
-                }}
-                className="flex-1 p-3.5 rounded-xl border-none bg-amber text-white text-base font-bold cursor-pointer font-[inherit] shadow-[0_4px_12px_#D9770640] active:scale-[0.98] transition-transform duration-100"
-              >
-                ออกจากหน้านี้
-              </button>
-            </div>
-          </BaseModal>
+        {showManual && (
+          <Suspense fallback={null}>
+            <ManualModal onClose={() => setShowManual(false)} />
+          </Suspense>
         )}
 
         {/* Toast */}

@@ -26,10 +26,19 @@ window.addEventListener("load", () => {
 
 /* ─── Auth Gate — show login or app based on auth state ──── */
 function AuthGate() {
-  const { user, loading, error } = useAuth();
+  const { user, loading, error, handlingLineCallback } = useAuth();
 
   if (loading) {
-    return <BootLoadingScreen message="กำลังเข้าสู่ระบบ..." />;
+    // ระหว่างแลก code ของ LINE ห้าม auto-reload — code/state ใช้ได้ครั้งเดียว
+    // reload กลางคันแล้วรอบถัดไปจะเข้าไม่ได้ ต้องกดล็อกอินใหม่
+    return (
+      <BootLoadingScreen
+        message={
+          handlingLineCallback ? "กำลังยืนยันตัวตนกับ LINE..." : "กำลังเข้าสู่ระบบ..."
+        }
+        autoReload={!handlingLineCallback}
+      />
+    );
   }
 
   if (!user) {

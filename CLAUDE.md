@@ -38,6 +38,10 @@ npm run test:watch   # Vitest watch mode
 Deploy เกิดอัตโนมัติเมื่อ push เข้า `main` (`.github/workflows/deploy.yml`) —
 ไม่ต้องรัน `firebase deploy` ด้วยมือ
 
+**LINE Login:** ระหว่างแลก `code` ห้าม reload หน้า — `code`/`state` ใช้ได้
+ครั้งเดียว · `BootLoadingScreen` รับ `autoReload={false}` ตอนนั้น (ดู `main.tsx`)
+และ `completeLineLogin` ล้าง `line_login_state` **หลังแลกสำเร็จ** เท่านั้น
+
 **Testing:** Vitest · test ไฟล์อยู่ข้าง source (`*.test.ts`) · โฟกัส pure logic
 ใน `src/utils/` (นับวันลา · โควต้า · ปฏิทินร้าน · format · วันที่) ·
 CI job `test` (typecheck + `npm test`) gate ทุก deploy job — เทสต์ fail = ไม่ deploy
@@ -112,7 +116,7 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `src/components/admin/EmployeeAdminPanel.tsx` + `EmployeeEditModal.tsx` | จัดการพนักงาน: list (ลากเรียง) + ฟอร์มแก้ไข |
 | `src/components/admin/LeaveSummaryPanel.tsx` / `LeaveListPanel.tsx` | สรุปลา / รายการลา |
 | `src/components/admin/PeriodSettlementPanel.tsx` | section "สรุปรอบจ่าย" — แถบรอบ + ตารางสรุปเงิน |
-| `src/hooks/usePeriodLock.ts` | ล็อกยอดรอบที่ถึงเวลา — เรียกที่ `AdminPanel` |
+| `src/hooks/usePeriodLock.ts` | ล็อกยอดรอบที่ถึงเวลา — เรียกที่ `AdminPanel` (ต้องส่ง `enabled: !leavesLoading`) |
 | `src/components/admin/PayrollPeriodBar.tsx` | แถบรอบจ่าย + ปุ่มปิด/เปิดรอบ |
 | `src/components/admin/PeriodSettlementTable.tsx` | ตารางสรุปเงินทั้งรอบ (ทุกคน) + ปุ่มคัดลอก |
 | `src/utils/payrollPeriod.ts` | **Single source** ของขอบเขตรอบจ่าย (มี unit test) |
@@ -278,6 +282,11 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
 ไปแก้ย้อนหลัง** ซึ่งต้องเปิดแอปอยู่แล้ว — พอเปิด useEffect จะล็อกให้ก่อน
 (พนักงานยื่นใบลาใหม่ได้เฉพาะวันนี้เป็นต้นไป ซึ่งตกรอบถัดไปแล้ว)
 
+> ⚠️ **`usePeriodLock` ต้องรอ `leaves` โหลดครบก่อนเสมอ** (`enabled: !leavesLoading`)
+> `/config/payrollPeriods` เป็น doc เดียวมักมาถึงก่อน query ใบลา — ถ้าล็อกตอน
+> `allLeaves` ยังว่าง จะได้ยอด "ทุกคนไม่ถูกหัก + ได้โบนัสเต็ม" แล้ว `pending`
+> พลิกเป็น false ถาวร แก้ได้ทางเดียวคือให้ admin กด "ยึดยอดใหม่"
+
 **Single source: `src/utils/periodSettlement.ts`** (pure · มี unit test)
 
 - `buildSettlement(employees, leaves, calendar, period)` → `{ rows, totals }`
@@ -343,11 +352,18 @@ Single source: `src/utils/storeCalendar.ts` — **แก้ logic วันเ�
   หรือ `THAI_MONTH_NAMES` จาก `src/constants.ts` ·
   data layer (Firestore, state) ใช้ `YYYY-MM-DD` ค.ศ. — แปลงเฉพาะตอน render
 - **Color contrast บน maroon bg → `text-white`** (ไม่ใช่ `text-gold-lt`)
+- ⚠️ **ห้ามเขียน `*/` ในคอมเมนต์ CSS** (เช่น `transition-*/`) — มันปิดคอมเมนต์
+  กลางคัน ทำให้ rule ถัดไปกลายเป็น parse error แล้วหายจาก CSS ที่ build
+  โดยไม่มี error ตอน build · เคยทำให้ปุ่มทั้งระบบมี tap delay ~300ms กลับมา
+  · เช็คด้วย `npm run build && grep <selector> dist/assets/*.css`
 - **Typography:** font หลักคือ **Prompt** (set ใน `index.css`) · default inherit
   ทั่วระบบ · button/input/select ที่ browser override ให้ใส่ `font-[inherit]` ·
   identifier ที่ admin พิมพ์ (LINE user/group id) ใช้ `font-[Prompt,monospace]`
 - Color theme: Maroon (#7B1C1C) + Gold (#C9973A) + Cream (#FDF8F0)
 - Mobile-first layout (max 430px) + Desktop sidebar (>= 768px)
+- **`AdminPanel` + `ManualModal` เป็น lazy chunk** (`React.lazy` ใน `App.tsx`)
+  — พนักงานไม่ต้องโหลด section ของ admin ทั้ง 8 ก่อนหน้าแรกขึ้น ·
+  ถ้าเพิ่ม component หนักที่ "ไม่ได้ใช้ตอนเปิดแอป" ให้ทำแบบเดียวกัน
 - Named Firestore database: `petchmangkorn-bot` (ไม่ใช่ default) —
   ชื่อนี้ปรากฏใน 4 ที่: `firebase.json` · `src/firebase/config.ts` ·
   `functions/src/helpers/config.ts` · `storage.rules` (ต้องตรงกันทั้งหมด)
