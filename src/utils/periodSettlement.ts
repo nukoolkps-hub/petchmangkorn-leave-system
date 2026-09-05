@@ -170,6 +170,21 @@ export function isSnapshotLocked(snapshot?: PeriodSnapshot | null): boolean {
  *  ทำไมฝั่ง client ถึงพอ: หลังพ้นวันตัดไปแล้ว สิ่งเดียวที่ทำให้ยอดของรอบ
  *  ขยับได้คือ admin ไปแก้ปฏิทินร้าน/ใบลาย้อนหลัง ซึ่งต้องเปิดแอปอยู่แล้ว —
  *  พอเปิดแอป ตัวนี้จะล็อกให้ก่อนที่จะแก้อะไรได้                          */
+/** รอบที่ปิดแล้วแต่ "ไม่มี snapshot เลย" ถึงเวลาสร้างยอดล็อกหรือยัง
+ *
+ *  เกิดกับรอบที่ปิดไว้ตั้งแต่ก่อนมีระบบล็อกยอด — มีแต่วันตัดรอบ ไม่มียอดเก็บไว้
+ *  ถ้าไม่ไล่เก็บ รอบพวกนี้จะคิดยอดสดตลอดไป ไม่มีวันล็อก
+ *
+ *  ไม่รู้ว่า admin กดปิดรอบวันไหน จึงยึด "วันสุดท้ายของรอบ" เป็นเกณฑ์แทน —
+ *  พ้นวันนั้นแล้วก็ล็อกได้ (วันลาหลังจากนั้นตกรอบถัดไปอยู่แล้ว)            */
+export function shouldBackfillSnapshot(
+  period: LeavePeriod,
+  snapshot: PeriodSnapshot | null | undefined,
+  todayYmd: string,
+): boolean {
+  return !snapshot && todayYmd > period.end;
+}
+
 export function shouldFinalizeSnapshot(
   snapshot: PeriodSnapshot | null | undefined,
   todayYmd: string,

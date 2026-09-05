@@ -295,6 +295,9 @@ admin เลือกวันแล้วกด **"ปิดรอบ"** ที
   `PeriodSnapshot` · **ต้องส่ง period ที่ `end` = วันตัดที่เลือก** ไม่ใช่ขอบ
   ชั่วคราวสิ้นเดือนที่โชว์อยู่ตอนรอบยังเปิด · `lockedFrom` = `closedOn` + 1 วัน
 - `isSnapshotLocked(snapshot)` → ล็อกแล้วหรือยัง (ยังไม่ล็อก = ต้องโชว์ยอดสด)
+- `shouldBackfillSnapshot(period, snapshot, todayYmd)` → รอบที่ปิดแล้วแต่
+  **ไม่มี snapshot เลย** ถึงเวลาเก็บยอดล็อกหรือยัง (เกิดกับรอบที่ปิดไว้ก่อนมี
+  ระบบล็อกยอด · ถ้าไม่ไล่เก็บจะคิดยอดสดตลอดไป)
   · `lockedFrom` = วันถัดจาก **วันที่มาทีหลัง** ระหว่าง `closedOn` กับ
   `period.end` — admin กดปิดรอบล่วงหน้าได้ ต้องไม่ล็อกก่อนรอบจบจริง
 - `shouldFinalizeSnapshot(snapshot, todayYmd)` → ถึงเวลาล็อกหรือยัง
@@ -308,8 +311,11 @@ Mutation ทั้งหมด (`closePayrollPeriod` / `finalizePayrollPeriod` /
 map ไม่ได้ · เก็บย้อนหลังสูงสุด `MAX_SNAPSHOTS` (60) รอบ เกินนั้นตัดรอบเก่าสุดทิ้ง
 
 - **เปิดรอบกลับ** ลบ snapshot ทิ้งด้วย (ยอดที่ล็อกผูกกับวันตัดที่กำลังยกเลิก)
-- `finalizePayrollPeriod` เช็ค `pending` ซ้ำใน transaction → หลายเครื่องเปิด
-  พร้อมกันก็เขียนครั้งเดียว
+- `finalizePayrollPeriod` เขียนได้เฉพาะรอบที่ยังมีวันตัดอยู่ และ (ไม่มี
+  snapshot | snapshot ยัง `pending`) → หลายเครื่องเปิดพร้อมกันก็เขียนครั้งเดียว
+  · รอบที่ถูกเปิดกลับไปแล้วไม่ถูกชุบชีวิต
+- **`usePeriodLock` ไล่จาก `cutoffs` ไม่ใช่จาก `snapshots`** — ไม่งั้นรอบที่ปิด
+  ไว้ก่อนมีระบบนี้ (มีแต่วันตัด) จะไม่มีวันถูกล็อก
 - snapshot ที่หน้าตาไม่ครบถูก sanitize ทิ้งทั้งรอบ → ตกกลับไปคิดยอดสด ·
   snapshot รุ่นเก่าที่ไม่มี `closedOn`/`pending` ถือว่าล็อกแล้ว
 

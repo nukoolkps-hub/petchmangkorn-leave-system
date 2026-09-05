@@ -51,6 +51,7 @@ export default function AdminPanel({
     employeeDirectory,
     allLeaves,
     storeCalendar,
+    periodCutoffs,
     periodSnapshots,
     onFinalizePeriod,
     enabled: !leavesLoading,

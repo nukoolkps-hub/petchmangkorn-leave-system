@@ -7,6 +7,7 @@ import {
   diffSettlement,
   isSnapshotLocked,
   makeSnapshot,
+  shouldBackfillSnapshot,
   shouldFinalizeSnapshot,
 } from "./periodSettlement";
 
@@ -247,5 +248,45 @@ describe("lock timing", () => {
     });
     expect(shouldFinalizeSnapshot(locked, "2026-07-15")).toBe(false);
     expect(shouldFinalizeSnapshot(null, "2026-07-15")).toBe(false);
+  });
+});
+
+// ── รอบที่ปิดไว้ตั้งแต่ก่อนมีระบบล็อกยอด (มีแต่วันตัด ไม่มี snapshot) ──
+describe("shouldBackfillSnapshot", () => {
+  const settlement = buildSettlement([emp("a", "เอ")], [], null, JUNE);
+  const closed = { start: "2026-06-01", end: "2026-06-27" };
+
+  it("ยังไม่พ้นวันสุดท้ายของรอบ → ยังไม่เก็บ", () => {
+    expect(shouldBackfillSnapshot(closed, undefined, "2026-06-26")).toBe(false);
+    expect(shouldBackfillSnapshot(closed, undefined, "2026-06-27")).toBe(false);
+  });
+
+  it("พ้นวันสุดท้ายของรอบแล้ว → เก็บยอดล็อกให้", () => {
+    expect(shouldBackfillSnapshot(closed, undefined, "2026-06-28")).toBe(true);
+    // เปิดแอปช้าไปหลายเดือนก็ยังต้องเก็บ
+    expect(shouldBackfillSnapshot(closed, undefined, "2026-09-04")).toBe(true);
+  });
+
+  it("มี snapshot อยู่แล้ว → ไม่ใช่หน้าที่ของตัวนี้", () => {
+    const draft = makeSnapshot("2026-06", closed, settlement, {
+      closedOn: "2026-06-27",
+      pending: true,
+    });
+    expect(shouldBackfillSnapshot(closed, draft, "2026-09-04")).toBe(false);
+    expect(
+      shouldBackfillSnapshot(
+        closed,
+        { ...draft, pending: false },
+        "2026-09-04",
+      ),
+    ).toBe(false);
+  });
+
+  it("รอบที่ปิดด้วยวันตัด = สิ้นเดือน ก็ล็อกได้เมื่อขึ้นเดือนใหม่", () => {
+    // เคสจริง: ปิด ส.ค. 2026 ด้วยวันตัดสิ้นเดือน แล้วเปิดแอปวันที่ 4 ก.ย.
+    const august = { start: "2026-08-01", end: "2026-08-31" };
+    expect(shouldBackfillSnapshot(august, undefined, "2026-08-31")).toBe(false);
+    expect(shouldBackfillSnapshot(august, undefined, "2026-09-01")).toBe(true);
+    expect(shouldBackfillSnapshot(august, undefined, "2026-09-04")).toBe(true);
   });
 });
