@@ -103,13 +103,13 @@ async function handleSetupEmployeeCommand({
 		db,
 		setupCommand.targetLineUserId,
 	);
-	// แท็กอย่างเดียว (ใช้ชื่อ LINE) → ต้องตรงเป๊ะ · ชื่อ LINE ที่แค่คล้าย
-	// ชื่อในระบบ (เช่น "Mint" กับ "M-I-N-T🍒") อาจเป็นคนละคน อย่าเดาให้
-	const employeeResult = await findEmployeeByKey(
-		db,
-		setupCommand.employeeKey,
-		setupCommand.hasExplicitName ? "fuzzy" : "exact",
-	);
+	// แท็กอย่างเดียว → ตัดสินจาก LINE ID ล้วน ไม่เอาชื่อ LINE ไปเดา
+	//   (ชื่อ LINE ที่คล้ายชื่อในระบบ เช่น "Mint" กับ "M-I-N-T🍒" อาจเป็นคนละคน)
+	//   LINE ID ผูกแล้ว → บอกว่าผูกกับใคร · ยังไม่ผูก → เพิ่มพนักงานใหม่
+	// ผูกกับพนักงานเดิมที่ยังไม่มี LINE → admin ต้องพิมพ์ชื่อต่อท้ายเอง
+	const employeeResult: EmployeeLookupResult = setupCommand.hasExplicitName
+		? await findEmployeeByKey(db, setupCommand.employeeKey)
+		: { status: "not-found" };
 
 	if (employeeResult.status === "not-found") {
 		if (existingLinkedEmployee) {
@@ -117,17 +117,6 @@ async function handleSetupEmployeeCommand({
 				config,
 				event.replyToken,
 				`LINE account นี้ถูกเชื่อมกับ ${existingLinkedEmployee.name} แล้ว`,
-			);
-			return;
-		}
-
-		// ชื่อ LINE ของคนที่แท็กมักไม่ตรงกับชื่อในระบบ — ถ้าเพิ่มพนักงานใหม่
-		// จากชื่อ LINE เลยจะได้พนักงานซ้ำกับคนเดิม · เพิ่มใหม่ต้องพิมพ์ชื่อเอง
-		if (!setupCommand.hasExplicitName) {
-			await replyText(
-				config,
-				event.replyToken,
-				`ไม่พบพนักงานชื่อ "${setupCommand.employeeKey}" (ชื่อ LINE ของคนที่แท็ก)\nกรุณาพิมพ์ชื่อพนักงานในระบบต่อท้ายการแท็ก เช่น @บอท เชื่อมพนักงาน @พนักงาน ชื่อพนักงาน\nถ้าเป็นพนักงานใหม่ ระบบจะเพิ่มให้ตามชื่อที่พิมพ์`,
 			);
 			return;
 		}
@@ -176,7 +165,7 @@ async function handleSetupEmployeeCommand({
 		await replyText(
 			config,
 			event.replyToken,
-			`เพิ่มพนักงานและเปิดสิทธิ์ LINE Login ให้ ${setupCommand.employeeKey} เรียบร้อย\n${setupCommand.targetMentionText}: ${setupCommand.targetLineUserId}`,
+			`เพิ่มพนักงานและเปิดสิทธิ์ LINE Login ให้ ${setupCommand.employeeKey} เรียบร้อย\n${setupCommand.targetMentionText}: ${setupCommand.targetLineUserId}${setupCommand.hasExplicitName ? "" : "\nแก้ชื่อพนักงานได้ในแอป (ADMIN → พนักงาน)"}`,
 		);
 		return;
 	}
@@ -346,7 +335,6 @@ const MIN_LOOSE_KEY_LENGTH = 2;
 async function findEmployeeByKey(
 	db: Firestore,
 	key: string,
-	mode: MatchMode,
 ): Promise<EmployeeLookupResult> {
 	const snapshot = await db.collection("employees").get();
 	const employees: EmployeeRecord[] = snapshot.docs.map((doc) => {
@@ -366,15 +354,12 @@ async function findEmployeeByKey(
 				typeof data.lineUserId === "string" ? data.lineUserId : undefined,
 		};
 	});
-	return matchEmployeeByKey(employees, key, mode);
+	return matchEmployeeByKey(employees, key);
 }
-
-type MatchMode = "exact" | "fuzzy";
 
 export function matchEmployeeByKey(
 	employees: EmployeeRecord[],
 	key: string,
-	mode: MatchMode = "fuzzy",
 ): EmployeeLookupResult {
 	const normalizedKey = normalizeLookupKey(key);
 	const compactKey = compactLookupKey(key);
@@ -399,7 +384,6 @@ export function matchEmployeeByKey(
 		),
 	);
 	if (exact) return exact;
-	if (mode === "exact") return { status: "not-found" };
 
 	if (compactKey) {
 		const compactExact = pick(
