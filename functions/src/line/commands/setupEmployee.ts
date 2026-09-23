@@ -27,11 +27,14 @@ interface SetupCommand {
 	targetLineUserId: string;
 	targetMentionText: string;
 	employeeKey: string;
+	/** admin พิมพ์ชื่อพนักงานต่อท้ายเอง (ไม่ได้ใช้ชื่อ LINE ของคนที่แท็ก) */
+	hasExplicitName: boolean;
 }
 
 interface EmployeeRecord {
 	id: string;
 	name: string;
+	nickname?: string;
 	lineUserId?: string;
 }
 
@@ -112,6 +115,17 @@ async function handleSetupEmployeeCommand({
 			return;
 		}
 
+		// ชื่อ LINE ของคนที่แท็กมักไม่ตรงกับชื่อในระบบ — ถ้าเพิ่มพนักงานใหม่
+		// จากชื่อ LINE เลยจะได้พนักงานซ้ำกับคนเดิม · เพิ่มใหม่ต้องพิมพ์ชื่อเอง
+		if (!setupCommand.hasExplicitName) {
+			await replyText(
+				config,
+				event.replyToken,
+				`ไม่พบพนักงานชื่อ "${setupCommand.employeeKey}" (ชื่อ LINE ของคนที่แท็ก)\nกรุณาพิมพ์ชื่อพนักงานในระบบต่อท้ายการแท็ก เช่น @บอท เชื่อมพนักงาน @พนักงาน ชื่อพนักงาน\nถ้าเป็นพนักงานใหม่ ระบบจะเพิ่มให้ตามชื่อที่พิมพ์`,
+			);
+			return;
+		}
+
 		await ensureLineAuthUser(
 			setupCommand.targetLineUserId,
 			setupCommand.employeeKey,
@@ -165,9 +179,11 @@ async function handleSetupEmployeeCommand({
 		await replyText(
 			config,
 			event.replyToken,
-			`พบพนักงานใกล้เคียงหลายคน: ${employeeResult.employees
+			`ค้นหาด้วยชื่อ "${setupCommand.employeeKey}" แล้วพบพนักงานใกล้เคียงหลายคน: ${employeeResult.employees
 				.map((employee) => employee.name)
-				.join(", ")}\nกรุณาพิมพ์ชื่อเต็มหรือรหัสพนักงาน`,
+				.join(
+					", ",
+				)}\nกรุณาพิมพ์ชื่อพนักงานต่อท้ายการแท็ก เช่น @บอท เชื่อมพนักงาน @พนักงาน ${employeeResult.employees[0].name}`,
 		);
 		return;
 	}
@@ -268,6 +284,7 @@ function parseSetupEmployeeCommand(event: LineEvent): SetupCommand | null {
 		targetLineUserId: targetMention.userId,
 		targetMentionText,
 		employeeKey,
+		hasExplicitName: !!explicitEmployeeKey,
 	};
 }
 
@@ -308,42 +325,89 @@ async function ensureLineAuthUser(
 	});
 }
 
+// เทียบชื่อแบบตัดสัญลักษณ์/emoji/ช่องว่างทิ้ง — "M-I-N-T🍒" ↔ "mint"
+// (เก็บสระ/วรรณยุกต์ไทยไว้ด้วย \p{M})
+const NON_NAME_CHARS = /[^\p{L}\p{M}\p{N}]+/gu;
+
+function compactLookupKey(value: string): string {
+	return normalizeLookupKey(value).replace(NON_NAME_CHARS, "");
+}
+
+// key สั้นกว่านี้ไม่เอาไปเทียบแบบ "มีคำนี้อยู่ในชื่อ" — ไม่งั้นชื่อ LINE
+// ตัวเดียวอย่าง "m" จะไปตรงกับทุกคนที่มีตัว m ในชื่อ
+const MIN_LOOSE_KEY_LENGTH = 2;
+
 async function findEmployeeByKey(
 	db: Firestore,
 	key: string,
 ): Promise<EmployeeLookupResult> {
-	const normalizedKey = normalizeLookupKey(key);
 	const snapshot = await db.collection("employees").get();
-	const employees = snapshot.docs.map((doc) => {
-		const data = doc.data() as { name?: unknown; lineUserId?: unknown };
+	const employees: EmployeeRecord[] = snapshot.docs.map((doc) => {
+		const data = doc.data() as {
+			name?: unknown;
+			nickname?: unknown;
+			lineUserId?: unknown;
+		};
 		return {
 			id: doc.id,
 			name: typeof data.name === "string" ? data.name : doc.id,
+			nickname:
+				typeof data.nickname === "string" && data.nickname.trim()
+					? data.nickname
+					: undefined,
 			lineUserId:
 				typeof data.lineUserId === "string" ? data.lineUserId : undefined,
 		};
 	});
+	return matchEmployeeByKey(employees, key);
+}
 
-	const exactMatches = employees.filter(
-		(employee) =>
-			normalizeLookupKey(employee.id) === normalizedKey ||
-			normalizeLookupKey(employee.name) === normalizedKey,
+export function matchEmployeeByKey(
+	employees: EmployeeRecord[],
+	key: string,
+): EmployeeLookupResult {
+	const normalizedKey = normalizeLookupKey(key);
+	const compactKey = compactLookupKey(key);
+	const namesOf = (employee: EmployeeRecord) =>
+		employee.nickname ? [employee.name, employee.nickname] : [employee.name];
+
+	const pick = (matches: EmployeeRecord[]): EmployeeLookupResult | null => {
+		if (matches.length === 1) return { status: "found", employee: matches[0] };
+		if (matches.length > 1) {
+			return { status: "ambiguous", employees: matches.slice(0, 5) };
+		}
+		return null;
+	};
+
+	const exact = pick(
+		employees.filter(
+			(employee) =>
+				normalizeLookupKey(employee.id) === normalizedKey ||
+				namesOf(employee).some(
+					(name) => normalizeLookupKey(name) === normalizedKey,
+				),
+		),
 	);
-	if (exactMatches.length === 1) {
-		return { status: "found", employee: exactMatches[0] };
-	}
-	if (exactMatches.length > 1) {
-		return { status: "ambiguous", employees: exactMatches };
+	if (exact) return exact;
+
+	if (compactKey) {
+		const compactExact = pick(
+			employees.filter((employee) =>
+				namesOf(employee).some((name) => compactLookupKey(name) === compactKey),
+			),
+		);
+		if (compactExact) return compactExact;
 	}
 
-	const looseMatches = employees.filter((employee) =>
-		normalizeLookupKey(employee.name).includes(normalizedKey),
-	);
-	if (looseMatches.length === 1) {
-		return { status: "found", employee: looseMatches[0] };
-	}
-	if (looseMatches.length > 1) {
-		return { status: "ambiguous", employees: looseMatches.slice(0, 5) };
+	if (Array.from(compactKey).length >= MIN_LOOSE_KEY_LENGTH) {
+		const loose = pick(
+			employees.filter((employee) =>
+				namesOf(employee).some((name) =>
+					compactLookupKey(name).includes(compactKey),
+				),
+			),
+		);
+		if (loose) return loose;
 	}
 
 	return { status: "not-found" };
