@@ -103,7 +103,13 @@ async function handleSetupEmployeeCommand({
 		db,
 		setupCommand.targetLineUserId,
 	);
-	const employeeResult = await findEmployeeByKey(db, setupCommand.employeeKey);
+	// แท็กอย่างเดียว (ใช้ชื่อ LINE) → ต้องตรงเป๊ะ · ชื่อ LINE ที่แค่คล้าย
+	// ชื่อในระบบ (เช่น "Mint" กับ "M-I-N-T🍒") อาจเป็นคนละคน อย่าเดาให้
+	const employeeResult = await findEmployeeByKey(
+		db,
+		setupCommand.employeeKey,
+		setupCommand.hasExplicitName ? "fuzzy" : "exact",
+	);
 
 	if (employeeResult.status === "not-found") {
 		if (existingLinkedEmployee) {
@@ -340,6 +346,7 @@ const MIN_LOOSE_KEY_LENGTH = 2;
 async function findEmployeeByKey(
 	db: Firestore,
 	key: string,
+	mode: MatchMode,
 ): Promise<EmployeeLookupResult> {
 	const snapshot = await db.collection("employees").get();
 	const employees: EmployeeRecord[] = snapshot.docs.map((doc) => {
@@ -359,12 +366,15 @@ async function findEmployeeByKey(
 				typeof data.lineUserId === "string" ? data.lineUserId : undefined,
 		};
 	});
-	return matchEmployeeByKey(employees, key);
+	return matchEmployeeByKey(employees, key, mode);
 }
+
+type MatchMode = "exact" | "fuzzy";
 
 export function matchEmployeeByKey(
 	employees: EmployeeRecord[],
 	key: string,
+	mode: MatchMode = "fuzzy",
 ): EmployeeLookupResult {
 	const normalizedKey = normalizeLookupKey(key);
 	const compactKey = compactLookupKey(key);
@@ -389,6 +399,7 @@ export function matchEmployeeByKey(
 		),
 	);
 	if (exact) return exact;
+	if (mode === "exact") return { status: "not-found" };
 
 	if (compactKey) {
 		const compactExact = pick(
