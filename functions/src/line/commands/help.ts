@@ -81,12 +81,12 @@ function makeHelpFlexMessage(): LinePushMessage {
 					}),
 					commandBox({
 						command: "@บอท เชื่อมพนักงาน @พนักงาน",
-						description: "เชื่อมบัญชี LINE ให้พนักงานจากการแท็ก",
+						description: "เพิ่มพนักงานใหม่จากการแท็ก (เช็คซ้ำด้วย LINE ID)",
 						scope: "กลุ่ม",
 					}),
 					commandBox({
 						command: "@บอท เชื่อมพนักงาน @พนักงาน ชื่อพนักงาน",
-						description: "เชื่อมหรือเพิ่มพนักงานด้วยชื่อที่ระบุ",
+						description: "เชื่อมพนักงานเดิมที่ยังไม่มี LINE หรือเพิ่มใหม่ตามชื่อที่พิมพ์",
 						scope: "กลุ่ม",
 					}),
 					commandBox({
