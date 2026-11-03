@@ -135,6 +135,11 @@ export default function LeaveApp() {
     deleteEmployee,
     reorderEmployees,
     updateStoreCalendar: updateStoreCalendarAction,
+    duties,
+    dutiesLoading,
+    dutyAssignmentsToday,
+    upsertDuty,
+    deleteDuty,
     closePayrollPeriod,
     reopenPayrollPeriod,
     relockPayrollPeriod,
@@ -297,6 +302,8 @@ export default function LeaveApp() {
                       currentEmployee={currentEmployee}
                       storeCalendar={storeCalendar}
                       periodCutoffs={periodCutoffs}
+                      duties={duties}
+                      dutyAssignmentsToday={dutyAssignmentsToday}
                     />
                   )
                 }
@@ -369,6 +376,11 @@ export default function LeaveApp() {
                         onRelockPeriod={relockPayrollPeriod}
                         onFinalizePeriod={finalizePayrollPeriod}
                         onUpdateStoreCalendar={updateStoreCalendarAction}
+                        duties={duties}
+                        dutiesLoading={dutiesLoading}
+                        dutyAssignmentsToday={dutyAssignmentsToday}
+                        onUpsertDuty={upsertDuty}
+                        onDeleteDuty={deleteDuty}
                         showToast={showToast}
                       />
                     </Suspense>

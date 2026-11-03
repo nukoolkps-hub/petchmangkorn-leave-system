@@ -4,7 +4,12 @@
    - return { data, loading, error }
    - cleanup on unmount                                          */
 import { type DependencyList, useEffect, useState } from "react";
-import type { Employee, LeaveEntry } from "../../types";
+import type { Duty, Employee, LeaveEntry } from "../../types";
+import { subscribeDuties } from "../duties";
+import {
+  type DutyAssignmentsSnapshot,
+  subscribeDutyAssignments,
+} from "../dutyAssignments";
 import {
   subscribeEmployeeByLineUserId,
   subscribeEmployees,
@@ -143,6 +148,20 @@ export function usePayrollPeriods() {
   return useScopedSubscription(
     () => subscribePayrollPeriods,
     EMPTY_PERIODS,
+    [],
+  );
+}
+
+/** ตารางหน้าที่ — ทุกคน signed-in อ่านได้ · admin เขียน */
+export function useDuties() {
+  return useScopedSubscription(() => subscribeDuties, [] as Duty[], []);
+}
+
+/** หน้าที่วันนี้ (server-computed snapshot · doc เดียว) — ทุกคน signed-in */
+export function useDutyAssignments() {
+  return useScopedSubscription(
+    () => subscribeDutyAssignments,
+    null as DutyAssignmentsSnapshot | null,
     [],
   );
 }

@@ -20,5 +20,11 @@ export { setAdmin } from "./auth/setAdmin.js";
 // สรุปเช้า "ใครหยุดวันนี้" → push เข้ากลุ่ม LINE 07:30 ทุกวัน
 // (ทดสอบ: พิมพ์ "ทดสอบแจ้งเตือน" ใน LINE 1:1 chat กับ admin)
 export { sendDailySummary } from "./dailySummary/sendDailySummary.js";
+// หน้าที่ประจำวัน — server-side compute เพื่อให้ admin/พนักงานเห็นตรงกัน
+// (พนักงานอ่าน employees ของคนอื่นไม่ได้ จึงคำนวณ rotation เองไม่ได้)
+export {
+	recomputeDutyAssignments,
+	recomputeDutyAssignmentsDaily,
+} from "./duty/recompute.js";
 // LINE webhook — คำสั่งใน chat (ไอดีกลุ่ม / ไอดีของฉัน / ผูกพนักงาน ฯลฯ)
 export { lineWebhook } from "./line/webhook.js";

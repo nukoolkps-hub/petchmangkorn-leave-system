@@ -8,7 +8,8 @@ import {
   Wallet as IconWallet,
 } from "lucide-react";
 import { BUSINESS_RULES, LEAVE_TYPES, MAX_LEAVE_BONUS } from "../../constants";
-import type { Employee, LeaveEntry, StoreCalendar } from "../../types";
+import type { DutyAssignmentsSnapshot } from "../../firebase/dutyAssignments";
+import type { Duty, Employee, LeaveEntry, StoreCalendar } from "../../types";
 import { dateRange, fmtShort } from "../../utils/dateUtils";
 import {
   getCountedLeaveDays,
@@ -25,6 +26,7 @@ import { isStoreClosed } from "../../utils/storeCalendar";
 import BonusNote from "../shared/BonusNote";
 import DeductionSummary from "../shared/DeductionSummary";
 import { MemphisCornerSticker } from "../shared/MemphisPattern";
+import DutyTodayCard from "./DutyTodayCard";
 import TeamCalendar from "./TeamCalendar";
 
 interface HomeTabProps {
@@ -35,6 +37,8 @@ interface HomeTabProps {
   currentEmployee?: Employee | null;
   storeCalendar?: StoreCalendar | null;
   periodCutoffs?: PeriodCutoffs;
+  duties?: Duty[];
+  dutyAssignmentsToday?: DutyAssignmentsSnapshot | null;
 }
 
 export default function HomeTab({
@@ -44,6 +48,8 @@ export default function HomeTab({
   currentEmployee,
   storeCalendar,
   periodCutoffs,
+  duties,
+  dutyAssignmentsToday,
 }: HomeTabProps) {
   const now = new Date();
   const todayYmdStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -80,6 +86,21 @@ export default function HomeTab({
 
   return (
     <>
+      {/* หน้าที่วันนี้ — บนสุดเพราะใช้เช็คทุกเช้า · ซ่อนเมื่อ admin ยังไม่ได้ตั้ง
+          หน้าที่ หรือวันนี้ร้านปิด (snapshot ไม่มี assignment) */}
+      {duties &&
+        duties.length > 0 &&
+        dutyAssignmentsToday &&
+        dutyAssignmentsToday.assignments.length > 0 && (
+          <DutyTodayCard
+            duties={duties}
+            snapshot={dutyAssignmentsToday}
+            profileId={profile?.id || null}
+            allLeaves={allLeaves}
+            storeCalendar={storeCalendar}
+          />
+        )}
+
       {/* สรุปการลา + ยอดเงินของรอบนี้ */}
       <div
         className={`relative overflow-hidden bg-white rounded-[18px] px-5 py-4.5 shadow-[0_2px_14px_rgba(90,30,10,0.08)] mb-3 border-[1.5px] ${hasDeduction ? "border-[#C0392B50]" : "border-bdr"}`}

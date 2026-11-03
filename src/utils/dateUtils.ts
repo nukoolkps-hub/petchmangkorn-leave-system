@@ -1,6 +1,7 @@
 /* ─── Date helpers ─────────────────────────────────────────────── */
 import {
   THAI_MONTH_NAMES,
+  THAI_MONTH_SHORT_NAMES,
   THAI_SHORT_WEEKDAY_NAMES,
   TODAY,
 } from "../constants";
@@ -156,4 +157,27 @@ export function fmtThaiDateTime(ms: number): string {
 
 export function isFuture(s: string): boolean {
   return s > TODAY;
+}
+
+/** ลิสต์วันที่ (YYYY-MM-DD) → ข้อความสั้นจัดกลุ่มตามเดือน
+ *  `["2026-09-03","2026-09-08","2026-10-02"]` → `"3, 8 ก.ย. · 2 ต.ค."`
+ *
+ *  ใช้กางดู "ไปแทนวันไหนบ้าง" ในปฏิทินหน้าที่ — ต้องสั้นพอจะอยู่ในบรรทัดเดียว
+ *  บนมือถือ จึงไม่ใส่ปี (ทั้งลิสต์อยู่ในปีเดียวกันอยู่แล้ว) และพูดชื่อเดือน
+ *  ครั้งเดียวต่อกลุ่ม · เรียงตามที่ส่งมา (ต้นทางเรียงเก่า→ใหม่ให้แล้ว)      */
+export function formatDayListThai(dates: string[]): string {
+  const groups: { month: number; days: number[] }[] = [];
+  for (const d of dates) {
+    if (!d) continue;
+    const month = Number(d.slice(5, 7)) - 1;
+    const day = Number(d.slice(8, 10));
+    if (!Number.isInteger(month) || !Number.isInteger(day)) continue;
+    const last = groups[groups.length - 1];
+    if (last && last.month === month) last.days.push(day);
+    else groups.push({ month, days: [day] });
+  }
+  return groups
+    .map((g) => `${g.days.join(", ")} ${THAI_MONTH_SHORT_NAMES[g.month] ?? ""}`)
+    .join(" · ")
+    .trim();
 }

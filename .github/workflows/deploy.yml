@@ -35,6 +35,11 @@ jobs:
       - name: Typecheck (frontend)
         run: npm run typecheck
 
+      # อัลกอริทึมหน้าที่ถูก copy ไว้ 2 ที่ (src/ กับ functions/) — แก้ฝั่งเดียว
+      # ปฏิทินหน้าที่จะไม่ตรงกับ snapshot จริงแบบเงียบๆ
+      - name: Duty algorithm sync (client ↔ server)
+        run: node scripts/check-duty-sync.mjs
+
       - name: Unit tests
         run: npm test
 
