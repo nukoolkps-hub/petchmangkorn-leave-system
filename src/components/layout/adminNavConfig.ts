@@ -3,6 +3,7 @@
 
 import {
   Bell as IconBell,
+  CalendarClock as IconCalendarClock,
   CalendarDays as IconCalendarEvent,
   CalendarOff as IconCalendarOff,
   CalendarRange as IconCalendarRange,
@@ -23,9 +24,15 @@ export type AdminSectionId =
   | "calendar-view"
   | "store-calendar"
   | "linebot-notifications"
-  | "linebot-commands";
+  | "linebot-commands"
+  | "duty-schedule";
 
-export type AdminGroupId = "leave" | "settings" | "calendar" | "linebot";
+export type AdminGroupId =
+  | "leave"
+  | "settings"
+  | "calendar"
+  | "duty"
+  | "linebot";
 
 type AdminNavIcon = typeof IconChartBar;
 
@@ -67,6 +74,15 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { id: "summary", label: "สรุปลา", Icon: IconChartBar },
       { id: "period-settlement", label: "สรุปรอบจ่าย", Icon: IconWallet },
       { id: "leaves", label: "เพิ่ม - ลบ การลา", Icon: IconClipboardList },
+    ],
+  },
+  {
+    id: "duty",
+    label: "หน้าที่",
+    defaultSection: "duty-schedule",
+    Icon: IconCalendarClock,
+    items: [
+      { id: "duty-schedule", label: "ตารางหน้าที่", Icon: IconCalendarClock },
     ],
   },
   {

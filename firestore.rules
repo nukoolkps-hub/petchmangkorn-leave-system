@@ -128,6 +128,25 @@ service cloud.firestore {
           && resource.data.start > bangkokToday());
     }
 
+    // ─── Duties (ตารางหน้าที่) ──────────────────────────────────
+    // read: signed-in (พนักงานเห็น "วันนี้ฉันมีหน้าที่อะไร" + ปฏิทินหน้าที่)
+    // write: admin · ไม่มีฟิลด์อ่อนไหว (ชื่อหน้าที่ + id พนักงาน)
+    // cachedPrimary เขียนโดย Cloud Function (Admin SDK bypass rules)
+    match /duties/{dutyId} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ─── Duty Assignments Today (server-computed snapshot) ──────
+    // Cloud Function (recomputeDutyAssignments) compute + เขียน — มาจาก
+    // CRUD ที่กระทบ rotation + scheduled refresh 00:01 · snapshot มีแค่
+    // safe projection (id/ชื่อ/ชื่อเล่น/avatar/displayOrder — ไม่มี
+    // lineUserId) · signed-in อ่านได้ · client write ปิด (Admin SDK only)
+    match /dutyAssignmentsToday/{docId} {
+      allow read:  if isSignedIn();
+      allow write: if false;
+    }
+
     // ─── Server-side config/secrets ─────────────────────────────
     // Cloud Functions ใช้ Admin SDK (bypass rules) · client ห้ามอ่าน secrets
     // ข้อยกเว้น: notifications doc ให้ admin อ่าน/เขียนได้ผ่าน UI

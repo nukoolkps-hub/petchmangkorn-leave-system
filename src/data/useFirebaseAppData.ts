@@ -5,9 +5,18 @@
    Scope ของ subscription:
    - employees → admin เห็นทุกคน · พนักงานเห็นเฉพาะของตัวเอง
    - leaves    → ทุกคน signed-in อ่านได้ (ปฏิทินทีม + กันยื่นลาทับวัน)
-   - storeCalendar → public read · admin write                        */
+   - storeCalendar → public read · admin write
+   - duties + dutyAssignmentsToday → public read (snapshot คำนวณโดย
+     Cloud Function) · ทุก CRUD ที่กระทบการหมุนเวร (ใบลา/พนักงาน/ปฏิทิน
+     ร้าน/หน้าที่) ต้องเรียก triggerRecomputeDutyAssignments() ต่อท้าย
+     ไม่งั้น "หน้าที่วันนี้" ค้างของเดิมจนถึงรอบ 00:01                  */
 
 import { useCallback, useMemo } from "react";
+import {
+  deleteDuty as deleteDutyDoc,
+  upsertDuty as upsertDutyDoc,
+} from "../firebase/duties";
+import { triggerRecomputeDutyAssignments } from "../firebase/dutyAssignments";
 import {
   deleteEmployee as deleteEmployeeDoc,
   reorderEmployees as reorderEmployeesDocs,
@@ -15,6 +24,8 @@ import {
   upsertEmployee as upsertEmployeeDoc,
 } from "../firebase/employees";
 import {
+  useDuties,
+  useDutyAssignments,
   useEmployeesForScope,
   useLeavesForScope,
   usePayrollPeriods,
@@ -32,7 +43,13 @@ import {
   reopenPayrollPeriod as reopenPayrollPeriodDoc,
 } from "../firebase/payrollPeriods";
 import { updateStoreCalendar as updateStoreCalendarDoc } from "../firebase/storeCalendar";
-import type { AppData, Employee, LeaveEntry, StoreCalendar } from "../types";
+import type {
+  AppData,
+  Duty,
+  Employee,
+  LeaveEntry,
+  StoreCalendar,
+} from "../types";
 
 interface Args {
   authUid: string;
@@ -63,6 +80,8 @@ export default function useFirebaseAppData({
 
   const storeCalendarResult = useStoreCalendar();
   const payrollPeriodsResult = usePayrollPeriods();
+  const dutiesResult = useDuties();
+  const dutyAssignmentsResult = useDutyAssignments();
 
   const error = employeesResult.error || leavesResult.error || null;
 
@@ -78,7 +97,9 @@ export default function useFirebaseAppData({
   const addLeave = useCallback(
     async (leave: Omit<LeaveEntry, "id">) => {
       try {
-        return await addLeaveDoc(leave);
+        const id = await addLeaveDoc(leave);
+        triggerRecomputeDutyAssignments();
+        return id;
       } catch (err) {
         warn("บันทึกใบลาไม่สำเร็จ", err);
         throw err;
@@ -91,6 +112,7 @@ export default function useFirebaseAppData({
     async (id: string | number) => {
       try {
         await deleteLeaveDoc(id);
+        triggerRecomputeDutyAssignments();
       } catch (err) {
         warn("ลบใบลาไม่สำเร็จ", err);
         throw err;
@@ -132,6 +154,8 @@ export default function useFirebaseAppData({
           const nickname = fields.nickname ?? current?.nickname ?? null;
           if (name) await restampLeaveSnapshot(id, name, nickname);
         }
+        // ชื่อ/รูปใน snapshot หน้าที่เป็นสำเนา — แก้ข้อมูลพนักงานต้องคิดใหม่
+        triggerRecomputeDutyAssignments();
       } catch (err) {
         warn("บันทึกข้อมูลพนักงานไม่สำเร็จ", err);
         throw err;
@@ -143,7 +167,9 @@ export default function useFirebaseAppData({
   const upsertEmployee = useCallback(
     async (employee: Employee) => {
       try {
-        return await upsertEmployeeDoc(employee.id, employee);
+        const id = await upsertEmployeeDoc(employee.id, employee);
+        triggerRecomputeDutyAssignments();
+        return id;
       } catch (err) {
         warn("บันทึกข้อมูลพนักงานไม่สำเร็จ", err);
         throw err;
@@ -156,6 +182,7 @@ export default function useFirebaseAppData({
     async (id: string) => {
       try {
         await deleteEmployeeDoc(id);
+        triggerRecomputeDutyAssignments();
       } catch (err) {
         warn("ลบพนักงานไม่สำเร็จ", err);
         throw err;
@@ -168,6 +195,8 @@ export default function useFirebaseAppData({
     async (orderedIds: string[]) => {
       try {
         await reorderEmployeesDocs(orderedIds);
+        // ลำดับ pool ของหน้าที่ = displayOrder → ลากเรียงแล้วเวรขยับตาม
+        triggerRecomputeDutyAssignments();
       } catch (err) {
         warn("เรียงลำดับพนักงานไม่สำเร็จ", err);
         throw err;
@@ -183,6 +212,8 @@ export default function useFirebaseAppData({
           ...storeCalendarResult.data,
           ...fields,
         });
+        // วันร้านปิดไม่มีหน้าที่ — เปิด/ปิดร้านวันนี้ต้องคิดใหม่
+        triggerRecomputeDutyAssignments();
       } catch (err) {
         warn("บันทึกปฏิทินร้านไม่สำเร็จ", err);
         throw err;
@@ -191,12 +222,33 @@ export default function useFirebaseAppData({
     [warn, storeCalendarResult.data],
   );
 
+  const upsertDuty = useCallback(
+    async (
+      id: string | null,
+      data: Omit<Duty, "id" | "createdAt" | "updatedAt">,
+    ) => {
+      // ไม่ warn ที่นี่ — DutySchedulePanel ขึ้น toast เองแล้วคง modal ไว้
+      const newId = await upsertDutyDoc(id, data);
+      triggerRecomputeDutyAssignments();
+      return newId;
+    },
+    [],
+  );
+
+  const deleteDuty = useCallback(async (id: string) => {
+    await deleteDutyDoc(id);
+    triggerRecomputeDutyAssignments();
+  }, []);
+
   return {
     allLeaves,
     employeeDirectory,
     storeCalendar: storeCalendarResult.data,
     periodCutoffs: payrollPeriodsResult.data.cutoffs,
     periodSnapshots: payrollPeriodsResult.data.snapshots,
+    duties: dutiesResult.data,
+    dutiesLoading: dutiesResult.loading,
+    dutyAssignmentsToday: dutyAssignmentsResult.data,
     loading: employeesResult.loading,
     leavesLoading: leavesResult.loading,
     error,
@@ -207,6 +259,8 @@ export default function useFirebaseAppData({
     deleteEmployee,
     reorderEmployees,
     updateStoreCalendar,
+    upsertDuty,
+    deleteDuty,
     closePayrollPeriod: closePayrollPeriodDoc,
     reopenPayrollPeriod: reopenPayrollPeriodDoc,
     relockPayrollPeriod: relockPayrollPeriodDoc,

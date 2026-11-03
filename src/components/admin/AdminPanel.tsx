@@ -9,6 +9,7 @@ import {
   type AdminSectionId,
   getAdminGroupForSection,
 } from "../layout/adminNavConfig";
+import DutySchedulePanel from "./DutySchedulePanel";
 import EmployeeAdminPanel from "./EmployeeAdminPanel";
 import LeaveListPanel from "./LeaveListPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
@@ -35,6 +36,11 @@ export default function AdminPanel({
   onRelockPeriod,
   onFinalizePeriod,
   onUpdateStoreCalendar,
+  duties,
+  dutiesLoading,
+  dutyAssignmentsToday,
+  onUpsertDuty,
+  onDeleteDuty,
   showToast,
   // controlled by App so the desktop Sidebar can drive section as well
   section,
@@ -167,6 +173,21 @@ export default function AdminPanel({
             allLeaves={allLeaves}
             employeeDirectory={employeeDirectory}
             onDeleteLeave={onDelete}
+            showToast={showToast}
+          />
+        )}
+
+        {/* ── DUTY SCHEDULE section (ตารางหน้าที่) ── */}
+        {section === "duty-schedule" && (
+          <DutySchedulePanel
+            duties={duties || []}
+            dutiesLoading={dutiesLoading}
+            dutyAssignmentsToday={dutyAssignmentsToday}
+            employeeDirectory={employeeDirectory}
+            allLeaves={allLeaves}
+            storeCalendar={storeCalendar}
+            onUpsertDuty={onUpsertDuty}
+            onDeleteDuty={onDeleteDuty}
             showToast={showToast}
           />
         )}

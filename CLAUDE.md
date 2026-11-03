@@ -3,8 +3,9 @@
 ห้างทองเพชรมังกร — ระบบการลาพนักงาน + โหมด ADMIN
 
 > **ขอบเขต:** ระบบนี้ทำ **เฉพาะการลา** เท่านั้น · แยกมาจากระบบพนักงานของ
-> ห้างเพชรทองมุกดา โดยตัดเงินเดือน/ค่าคอมกองกลาง/เบิกเงิน/เงินกู้/หน้าที่ประจำ/
+> ห้างเพชรทองมุกดา โดยตัดเงินเดือน/ค่าคอมกองกลาง/เบิกเงิน/เงินกู้/
 > ความรู้ต่างๆ/ราคาทอง/PDF สลิป-ใบรับรอง/backup/ล้างข้อมูล ออกทั้งหมด
+> · **หน้าที่ประจำ** ยกกลับมาภายหลังตามคำสั่ง (ไม่มีเงินค่าแทน — ดู "หน้าที่ประจำ")
 > **อย่าเพิ่มฟีเจอร์เรื่องเงินกลับเข้ามาโดยไม่ได้รับคำสั่ง**
 >
 > ข้อยกเว้นเดียวที่เกี่ยวกับเงิน: **ค่าหักวันลา** (ดู Business Rules) —
@@ -29,7 +30,7 @@
 ```bash
 npm run dev          # Frontend + Firebase Emulators
 npm run build        # Production build → dist/
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc --noEmit + check-duty-sync (อัลกอริทึมหน้าที่ client ↔ server)
 npm run check        # Biome lint + format
 npm test             # Vitest (รันครั้งเดียว)
 npm run test:watch   # Vitest watch mode
@@ -50,7 +51,7 @@ CI job `test` (typecheck + `npm test`) gate ทุก deploy job — เทส�
 
 ```
 main.tsx → AuthProvider → AuthGate → App.tsx (LeaveApp)
-                                       ├── /home    → HomeTab (โควต้า + ปฏิทินทีม)
+                                       ├── /home    → HomeTab (หน้าที่วันนี้ + โควต้า + ปฏิทินทีม)
                                        ├── /request → RequestTab (ฟอร์มยื่นลา)
                                        └── /admin   → AdminPanel (admin-only)
 ```
@@ -68,6 +69,7 @@ main.tsx → AuthProvider → AuthGate → App.tsx (LeaveApp)
 | period-settlement (สรุปรอบจ่าย) | `PeriodSettlementPanel` → `PayrollPeriodBar` + `PeriodSettlementTable` |
 | leaves | `LeaveListPanel` |
 | roles (พนักงาน) | `EmployeeAdminPanel` → `EmployeeEditModal` |
+| duty-schedule (ตารางหน้าที่) | `DutySchedulePanel` → `DutyCard` + `DutyEditModal` (+ `DutyEditFields`) |
 | linebot-notifications | `LineBotNotificationsPanel` |
 | linebot-commands | `LineBotCommandsPanel` |
 
@@ -85,7 +87,9 @@ main.tsx → AuthProvider → AuthGate → App.tsx (LeaveApp)
 useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
                                        ├── employees      (admin: ทุกคน · employee: เฉพาะตัวเอง)
                                        ├── leaves         (ทุกคน signed-in — ปฏิทินทีม + กันลาทับวัน)
-                                       └── storeCalendar  (`/config/storeCalendar`)
+                                       ├── storeCalendar  (`/config/storeCalendar`)
+                                       ├── duties         (ทุกคน signed-in · admin เขียน)
+                                       └── dutyAssignmentsToday/snapshot (Cloud Function เขียน)
 ```
 
 **Scope ของ subscription:**
@@ -136,6 +140,10 @@ useAppData() → useFirebaseAppData() → Firestore real-time (onSnapshot)
 | `functions/src/auth/` | LINE Login → Firebase custom token + admin claim |
 | `functions/src/line/` | LINE webhook + commands |
 | `functions/src/dailySummary/` | สรุปเช้า 07:30 "ใครหยุดวันนี้" |
+| `src/utils/dutyUtils.ts` + `functions/src/duty/dutyUtils.ts` | อัลกอริทึมหน้าที่ (2 ชุด · `scripts/check-duty-sync.mjs` คุม · มี unit test) |
+| `functions/src/duty/recompute.ts` | คำนวณ "หน้าที่วันนี้" → `dutyAssignmentsToday/snapshot` (callable + 00:01 ทุกวัน) |
+| `src/components/admin/DutySchedulePanel.tsx` | ตารางหน้าที่ (admin) · `DutyEditModal` = ฟอร์ม |
+| `src/components/home/DutyTodayCard.tsx` / `modals/DutyForecastModal.tsx` | การ์ดหน้าที่วันนี้ (พนักงาน) / ปฏิทินหน้าที่ล่วงหน้า+ย้อนหลัง (lazy) |
 | `firestore.rules` / `storage.rules` | Security rules |
 
 ## Business Rules
@@ -337,6 +345,43 @@ map ไม่ได้ · เก็บย้อนหลังสูงสุด
 
 Single source: `src/utils/storeCalendar.ts` — **แก้ logic วันเปิด-ปิดต้องแก้ที่นี่
 ที่เดียว** แล้วอัปเดตเทสต์ใน `storeCalendar.test.ts`
+
+### หน้าที่ประจำ (duties)
+
+port มาจากระบบเพชรทองมุกดา (อัลกอริทึมเดียวกันทุกอย่าง) · ต่างกัน 2 จุด:
+
+1. **ไม่มีตำแหน่ง** (`Employee.role` เป็นข้อความอิสระ) → admin **เลือกคนรายชื่อ**
+   - rotation: `memberEmpIds` · ลำดับการสลับ = `displayOrder` ของพนักงาน
+     (ลากเรียงที่ "พนักงาน") **ไม่ใช่ลำดับใน array**
+   - coverage ("แทนคนลา"): `coverageTargetEmpIds` (คนที่ถ้าลาต้องหาคนแทน) +
+     `candidateEmpIds` (คนแทน)
+   - พนักงานใหม่ **ไม่ถูกใส่ในหน้าที่อัตโนมัติ** — admin ต้องไปติ๊กเพิ่ม
+2. **ไม่มีเรื่องเงิน** — ตัด `coveragePayPerOccurrence` (เงินค่าแทน) +
+   `grantsPoolEligibility` (สิทธิ์กองกลาง) ออก · **อย่าเพิ่มกลับโดยไม่ได้รับคำสั่ง**
+
+| ประเภท | ทำงานยังไง |
+|---|---|
+| หมุนเวียน รายสัปดาห์/เดือน | `pickPrimary` (cache → คนเริ่ม → Latin square → hash) · รายเดือน lock คนออกจากรายสัปดาห์ |
+| คนหลักลา | หาคนแทน "เคยแทนน้อยสุดก่อน" (`replayRotationSubHistory` ตั้งแต่ต้นปี) · ข้าม `substituteExcludedEmpIds` |
+| แทนคนลา (coverage) | ผูกขาดคนทำเสมอ · คนที่ถูกดึงไปแทน → หน้าที่หมุนเวียนของเขาหาคนแทนต่อ (cascade) |
+| `exclusive` (ผูกขาด) | คนทำวันนั้น (หลักหรือแทน) ไม่ถูกจัดหน้าที่อื่น · คนหลักที่ติดผูกขาด = "มีคนแทน" ไม่ใช่เวรเปลี่ยนมือ |
+| วันร้านปิด | ไม่มีหน้าที่ (`applicableDuties` อ่าน storeCalendar) · weekly + `skipSundays` ข้ามวันอาทิตย์ |
+
+**ทำไมคำนวณที่ server:** พนักงานอ่าน `employees` ของคนอื่นไม่ได้ → คำนวณ pool เอง
+ไม่ได้ · Cloud Function `recomputeDutyAssignments` (Admin SDK) เขียน
+`dutyAssignmentsToday/snapshot` = assignment วันนี้ + `dutyPools` (pool ของทุกหน้าที่ ·
+safe projection ไม่มี lineUserId) + `coverageForecast` · ปฏิทินหน้าที่คำนวณต่อฝั่ง client
+จาก `dutyPools`
+
+- **ทุก CRUD ที่กระทบเวรต้องเรียก `triggerRecomputeDutyAssignments()`** (ใบลา ·
+  พนักงาน · ลากเรียง · ปฏิทินร้าน · หน้าที่) — ทำไว้แล้วใน `useFirebaseAppData`
+  ถ้าเพิ่ม mutation ใหม่ที่ไม่ผ่านตรงนั้น ต้องเรียกเอง ไม่งั้นการ์ดค้างถึง 00:01
+- **อัลกอริทึมมี 2 ชุด** (`src/utils/dutyUtils.ts` ↔ `functions/src/duty/dutyUtils.ts`
+  · `functions/` import `src/` ไม่ได้) — แก้ฟังก์ชันแกนต้องแก้ทั้งคู่ ·
+  `scripts/check-duty-sync.mjs` เทียบ body (รันใน `npm run typecheck` + CI)
+- coverage เทสต์ที่ server engine ตรงๆ (`dutyCoverageExclusive.test.ts`) ·
+  เพิ่ม field ใน `DutyAssignment` ต้องแมปใน `recompute.ts` ด้วย
+  (`dutySnapshotFields.test.ts` คุม)
 
 ### สรุปเช้า LINE 07:30
 

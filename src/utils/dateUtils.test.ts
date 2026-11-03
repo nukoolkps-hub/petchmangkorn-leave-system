@@ -4,6 +4,7 @@ import {
   countWorkdays,
   dateRange,
   fmtThaiDateTime,
+  formatDayListThai,
   formatTenure,
   formatYmThai,
   isFuture,
@@ -133,5 +134,34 @@ describe("isPast / isFuture", () => {
     expect(isFuture("2999-12-31")).toBe(true);
     expect(isPast("2999-12-31")).toBe(false);
     expect(isFuture("2000-01-01")).toBe(false);
+  });
+});
+
+describe("formatDayListThai — กางดูว่าไปแทนวันไหนบ้าง", () => {
+  it("เดือนเดียว → พูดชื่อเดือนครั้งเดียว", () => {
+    expect(formatDayListThai(["2026-09-03", "2026-09-08", "2026-09-15"])).toBe(
+      "3, 8, 15 ก.ย.",
+    );
+  });
+
+  it("ข้ามเดือน → แยกกลุ่มตามเดือน", () => {
+    expect(formatDayListThai(["2026-09-28", "2026-10-02", "2026-10-05"])).toBe(
+      "28 ก.ย. · 2, 5 ต.ค.",
+    );
+  });
+
+  it("กลับมาเดือนเดิมทีหลัง = คนละกลุ่ม (คงลำดับตามที่ส่งมา ไม่จัดใหม่)", () => {
+    expect(formatDayListThai(["2026-09-01", "2026-10-01", "2026-09-30"])).toBe(
+      "1 ก.ย. · 1 ต.ค. · 30 ก.ย.",
+    );
+  });
+
+  it("ลิสต์ว่าง / ค่าเพี้ยน → ไม่พัง", () => {
+    expect(formatDayListThai([])).toBe("");
+    expect(formatDayListThai([""])).toBe("");
+  });
+
+  it("วันเดียว", () => {
+    expect(formatDayListThai(["2026-01-09"])).toBe("9 ม.ค.");
   });
 });
